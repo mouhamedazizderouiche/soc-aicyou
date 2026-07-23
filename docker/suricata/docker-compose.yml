@@ -1,0 +1,19 @@
+services:
+  suricata:
+    image: jasonish/suricata:7.0.7
+    container_name: suricata
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    volumes:
+      - ./config/suricata.yaml:/etc/suricata/suricata.yaml
+      - suricata_logs:/var/log/suricata
+      - suricata_rules:/var/lib/suricata/rules
+    command: -i ens33
+    restart: unless-stopped
+
+volumes:
+  suricata_logs:
+  suricata_rules:
