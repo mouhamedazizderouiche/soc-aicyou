@@ -62,3 +62,15 @@ Ce journal documente les décisions techniques, incidents rencontrés et résolu
 
 - Connexion Suricata → Wazuh (ingestion des logs `eve.json`).
 - Démarrage Phase 2 : pipeline Python de collecte et normalisation des événements.
+
+## 24/07/2026 — Intégration Suricata → Wazuh
+
+- Migration du volume Suricata (nommé) vers un bind mount (`/var/log/suricata`) pour rendre les logs accessibles nativement depuis la VM hôte.
+- Installation et enregistrement du Wazuh agent natif (v4.9.0) sur la VM, auto-enrôlé auprès du manager local (`127.0.0.1`).
+- Configuration d'un bloc `<localfile>` dans `ossec.conf` (format JSON) pointant vers `/var/log/suricata/eve.json`.
+- Validation : Wazuh applique automatiquement son ruleset natif Suricata (groupe de règles `ids, suricata`), sans décodeur additionnel nécessaire. Alertes structurées visibles dans le dashboard (ex: détection QUIC failed decrypt, signature 2231000).
+- **Phase 1 (mise en place de l'environnement) complétée.**
+
+## Prochaine session
+
+- Démarrage Phase 2 : pipeline Python de collecte, normalisation des événements Wazuh/Suricata, extraction de caractéristiques comportementales.
