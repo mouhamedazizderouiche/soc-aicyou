@@ -3,3 +3,4 @@ data/
 *.key
 *.pem
 certs/
+venv/
