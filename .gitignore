@@ -4,3 +4,5 @@ data/
 *.pem
 certs/
 venv/
+__pycache__/
+*.pyc
