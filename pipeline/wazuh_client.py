@@ -1,84 +1,82 @@
 """
 wazuh_client.py
 
-Client d'authentification et de requêtes vers l'API REST Wazuh.
-Gère l'obtention du token JWT et son renouvellement.
+Client de lecture des alertes Wazuh depuis l'Indexer (OpenSearch).
+Utilise un compte de service dédié en lecture seule (pipeline_svc),
+restreint à l'index wazuh-alerts-* (principe du moindre privilège).
 """
 
 import os
+import logging
 import requests
 import urllib3
 from dotenv import load_dotenv
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 load_dotenv()
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("wazuh_client")
 
-class WazuhClient:
-    """Client minimal pour interagir avec l'API REST Wazuh."""
+
+class WazuhIndexerClient:
+    """Client minimal pour interroger l'index wazuh-alerts-* sur l'Indexer."""
 
     def __init__(self):
-        self.base_url = os.getenv("WAZUH_API_URL")
-        self.user = os.getenv("WAZUH_API_USER")
-        self.password = os.getenv("WAZUH_API_PASSWORD")
+        self.base_url = os.getenv("WAZUH_INDEXER_URL")
+        self.user = os.getenv("WAZUH_INDEXER_USER")
+        self.password = os.getenv("WAZUH_INDEXER_PASSWORD")
 
         if not all([self.base_url, self.user, self.password]):
             raise ValueError(
                 "Variables d'environnement manquantes. "
-                "Vérifie que WAZUH_API_URL, WAZUH_API_USER et "
-                "WAZUH_API_PASSWORD sont définies dans .env"
+                "Vérifie WAZUH_INDEXER_URL, WAZUH_INDEXER_USER et "
+                "WAZUH_INDEXER_PASSWORD dans .env"
             )
 
-        self.token = None
+        self._auth = (self.user, self.password)
 
-    def authenticate(self) -> str:
-        """Authentifie auprès de l'API et récupère un token JWT."""
-        url = f"{self.base_url}/security/user/authenticate"
-        response = requests.post(
-            url,
-            auth=(self.user, self.password),
-            verify=False,
-            timeout=10,
-        )
-        response.raise_for_status()
-        self.token = response.json()["data"]["token"]
-        return self.token
+    def search_alerts(self, query: dict = None, size: int = 100) -> dict:
+        """
+        Recherche des alertes dans wazuh-alerts-*.
 
-    def _headers(self) -> dict:
-        if not self.token:
-            self.authenticate()
-        return {"Authorization": f"Bearer {self.token}"}
+        query : requête OpenSearch DSL (dict). Si None, retourne les
+                dernières alertes triées par timestamp décroissant.
+        size  : nombre max de résultats.
+        """
+        url = f"{self.base_url}/wazuh-alerts-*/_search"
 
-    def get(self, endpoint: str, params: dict = None) -> dict:
-        """Effectue une requête GET authentifiée vers l'API Wazuh."""
-        url = f"{self.base_url}{endpoint}"
+        body = query or {
+            "size": size,
+            "sort": [{"@timestamp": {"order": "desc"}}],
+        }
+
         response = requests.get(
             url,
-            headers=self._headers(),
-            params=params or {},
+            auth=self._auth,
+            json=body,
             verify=False,
-            timeout=10,
+            timeout=15,
         )
-
-        if response.status_code == 401:
-            self.authenticate()
-            response = requests.get(
-                url,
-                headers=self._headers(),
-                params=params or {},
-                verify=False,
-                timeout=10,
-            )
-
         response.raise_for_status()
         return response.json()
 
 
 if __name__ == "__main__":
-    client = WazuhClient()
-    token = client.authenticate()
-    print(f"Authentification réussie. Token (tronqué) : {token[:30]}...")
+    client = WazuhIndexerClient()
+    logger.info("Connexion à l'Indexer Wazuh...")
 
-    info = client.get("/")
-    print(f"Info API Wazuh : {info['data']['title']} v{info['data']['api_version']}")
+    result = client.search_alerts(size=5)
+    total = result["hits"]["total"]["value"]
+    logger.info("Connexion réussie. %d alertes disponibles au total.", total)
+
+    print(f"\n{total} alertes trouvées. Aperçu des 5 dernières :\n")
+    for hit in result["hits"]["hits"]:
+        source = hit["_source"]
+        rule_desc = source.get("rule", {}).get("description", "N/A")
+        agent = source.get("agent", {}).get("name", "N/A")
+        timestamp = source.get("@timestamp", "N/A")
+        print(f"[{timestamp}] agent={agent} | {rule_desc}")
