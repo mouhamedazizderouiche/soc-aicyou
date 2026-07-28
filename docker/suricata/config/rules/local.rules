@@ -1,0 +1,14 @@
+# ============================================================
+# Règles custom — détection comportementale (indépendante de l'outil)
+# ============================================================
+
+# Détection de scan de ports : alerte si une même source IP envoie
+# au moins 15 paquets SYN vers le réseau surveillé en 10 secondes.
+# Fonctionne quel que soit l'outil (nmap, masscan, script custom, etc.)
+# car basé sur le VOLUME de tentatives de connexion, pas une signature.
+alert tcp any any -> $HOME_NET any (msg:"CUSTOM Possible port scan detected (high connection rate from single source)"; flags:S; threshold: type both, track by_src, count 15, seconds 10; classtype:attempted-recon; sid:9000001; rev:1;)
+
+# Variante plus sensible pour un scan lent (slow scan) : seuil plus bas
+# sur une fenêtre plus longue, pour capturer les scans furtifs qui
+# essaient d'éviter la détection par volume.
+alert tcp any any -> $HOME_NET any (msg:"CUSTOM Possible slow port scan detected (low-and-slow reconnaissance)"; flags:S; threshold: type both, track by_src, count 10, seconds 60; classtype:attempted-recon; sid:9000002; rev:1;)

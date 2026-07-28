@@ -2165,6 +2165,7 @@ napatech:
 default-rule-path: /var/lib/suricata/rules
 
 rule-files:
+  - /etc/suricata/rules/local.rules
   - suricata.rules
 
 ##
