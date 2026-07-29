@@ -50,6 +50,9 @@ def normalize_alert(raw_alert: dict) -> dict:
         "src_port": data.get("src_port"),
         "dest_port": data.get("dest_port"),
         "protocol": data.get("proto"),
+        "direction": data.get("direction"),
+        "flow_src_ip": data.get("flow", {}).get("src_ip") if isinstance(data.get("flow"), dict) else None,
+        "flow_dest_ip": data.get("flow", {}).get("dest_ip") if isinstance(data.get("flow"), dict) else None,
         "mitre_tactics": rule.get("mitre_tactics"),
         "mitre_techniques": rule.get("mitre_techniques"),
         "raw": source,  # on ne perd jamais l'original
