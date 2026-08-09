@@ -46,10 +46,16 @@ class AnalysisEngine:
     def __init__(
         self,
         risk_model_path: str = "data/xgboost_baseline.json",
+        iso_model_path: str = "data/isolation_forest.pkl",
         tactic_model_path: str = "data/xgboost_tactic_classifier_final.json",
         tactic_encoder_path: str = "data/tactic_label_encoder.pkl",
+        use_ensemble: bool = True,
     ):
-        self.risk_scorer = RiskScorer(model_path=risk_model_path)
+        self.risk_scorer = RiskScorer(
+            xgb_model_path=risk_model_path,
+            iso_model_path=iso_model_path,
+            use_ensemble=use_ensemble,
+        )
 
         self.tactic_model = xgb.XGBClassifier()
         self.tactic_model.load_model(tactic_model_path)
