@@ -540,15 +540,18 @@ elif page == "🧠 Moteur d'analyse":
         col_r1, col_r2 = st.columns([2, 1])
         with col_r1:
             display = analysis[["true_label", "risk_score", "risk_band",
+                                 "flagged_by_anomaly_detector",
                                  "predicted_tactic", "tactic_confidence", "mitre_id", "recommendation"]].copy()
             display["risk_score"] = display["risk_score"].round(3)
             display["tactic_confidence"] = display["tactic_confidence"].round(3)
-
+            display["flagged_by_anomaly_detector"] = display["flagged_by_anomaly_detector"].map(
+                {1: "🔍 Isolation Forest", 0: ""}
+            )
+            display = display.rename(columns={"flagged_by_anomaly_detector": "detecte_par"})
             def style_risk_band(val):
                 colors = {"critical": "#ff5c5c", "high": "#ff9d42", "medium": "#ffd166", "low": "#06d6a0"}
                 c = colors.get(val, "#8b93a7")
                 return f"background-color:{c}22; color:{c}; font-weight:700;"
-
             styled = display.style.applymap(style_risk_band, subset=["risk_band"])
             st.dataframe(styled, use_container_width=True, height=420, hide_index=True)
 
