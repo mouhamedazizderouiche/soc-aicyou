@@ -74,3 +74,60 @@ Ce journal documente les décisions techniques, incidents rencontrés et résolu
 ## Prochaine session
 
 - Démarrage Phase 2 : pipeline Python de collecte, normalisation des événements Wazuh/Suricata, extraction de caractéristiques comportementales.
+
+## 26/07/2026 — Phase 2 : Pipeline Python (collecte, normalisation, features)
+
+- Mise en place de l'environnement Python (venv, dépendances épinglées) et d'un client d'API Wazuh (`wazuh_client.py`).
+- **Sécurité** : bascule vers un compte de service à privilèges minimaux (least-privilege) pour l'accès en lecture au pipeline, plutôt que d'utiliser un compte administrateur.
+- Développement du module de normalisation (`normalizer.py`) : uniformisation des alertes Wazuh/Suricata dans un schéma commun exploitable.
+- Développement du collecteur incrémental (`collector.py`) : stockage des alertes en JSON Lines, avec gestion de point de reprise (checkpoint) pour éviter les doublons entre exécutions.
+- Développement de l'extraction de caractéristiques comportementales (`feature_extractor.py`), première version.
+
+## 26/07/2026 — Phase 3 : Premier modèle de détection
+
+- Entraînement d'un modèle XGBoost baseline pour la classification binaire (normal/attaque) sur le jeu de données NSL-KDD.
+- Analyse de seuil de décision (`threshold_analysis.py`) et développement du module de scoring de risque (`risk_scorer.py`), avec bandes de risque (low/medium/high/critical).
+- Développement du modèle de classification multi-classe des tactiques MITRE ATT&CK (`tactic_classifier.py` puis version SMOTE pour le rééquilibrage des classes).
+- Assemblage du moteur d'analyse de bout en bout (`analysis_engine.py`) combinant score de risque, tactique prédite et recommandation.
+- Évaluation complète du pipeline sur le jeu de test (`evaluate_full_pipeline.py`) : taux de détection, faux positifs, temps de traitement.
+
+## 28/07/2026 — Couche 2 : règles Suricata comportementales
+
+- Ajout de règles Suricata personnalisées, indépendantes de l'outil d'attaque, pour la détection de scan de ports (seuil de connexions par IP source sur une fenêtre de temps courte).
+- Objectif : détecter le comportement de reconnaissance réseau plutôt qu'une signature d'outil spécifique (fonctionne contre nmap, masscan, ou tout scanner générant le même pattern de trafic).
+
+## 29/07/2026 — Extraction de caractéristiques multi-échelle
+
+- Amélioration de `feature_extractor.py` : distinction du trafic entrant/sortant par direction de flux (`flow_src_ip`/`flow_dest_ip`), pour isoler le vrai signal de reconnaissance du bruit de navigation web normal.
+- Ajout de fenêtres temporelles multiples (1 minute pour les rafales/scans, 5 minutes pour les tendances comportementales générales).
+- Rédaction du playbook de réponse aux incidents (`docs/playbook-reponse-incidents.md`) : procédures de triage par bande de risque et tactique MITRE.
+
+## 02/08/2026 — Rapport de validation formel
+
+- Développement de `validation_report.py` consolidant les métriques attendues par le cahier des charges : taux de détection, taux de faux positifs, temps de traitement (latence bout-en-bout du pipeline réel), pertinence de la priorisation.
+- **Constat notable** : le goulot d'étranglement du pipeline réel n'est pas le calcul du modèle IA (quasi instantané) mais la requête réseau vers l'indexeur Wazuh.
+
+## 04-06/08/2026 — Simulation d'attaque et Couche 2 côté hôte (Wazuh)
+
+- Simulation d'une attaque par force brute SSH depuis une VM Windows dédiée (Posh-SSH), contre un compte de test jetable.
+- **Constat** : la règle de corrélation native de Wazuh pour la force brute ne se déclenchait pas sur une attaque courte (sous le seuil par défaut), et une connexion réussie après plusieurs échecs était journalisée au même niveau de sévérité qu'une connexion normale — angle mort de détection.
+- Développement de règles Wazuh personnalisées (`local_rules.xml`, règles 100010/100011) : escalade sur échecs répétés, et escalade forte spécifique en cas de succès suivant une série d'échecs (signal de compromission d'identifiants).
+- **Difficultés de déploiement résolues** : `docker compose restart` n'applique pas les nouveaux montages de volumes (nécessite `up -d --force-recreate`) ; le mécanisme d'auto-copie de configuration de Wazuh (`/wazuh-config-mount/`) ne s'applique que sur un volume neuf, pas sur un déploiement existant (copie manuelle requise).
+- Validation de bout en bout : les deux règles se déclenchent correctement lors d'une attaque réelle rejouée.
+
+## 07-09/08/2026 — Tableau de bord Streamlit et amélioration IA
+
+- Développement du tableau de bord SOC (`dashboard.py`) : vue d'ensemble avec résumé automatique en langage naturel, alertes en direct avec filtres avancés et workflow de triage persistant, cartographie MITRE ATT&CK, démonstration interactive du moteur d'analyse.
+- **Amélioration majeure du modèle de détection** : ajout d'un détecteur d'anomalies Isolation Forest (non supervisé, entraîné uniquement sur trafic normal) en complément du XGBoost supervisé.
+  - Diagnostic : le plafond de rappel du XGBoost est une limite structurelle de l'apprentissage supervisé (incapable de reconnaître un type d'attaque absent de son entraînement).
+  - Isolation Forest ne partage pas cette limite, car il détecte des écarts au comportement normal plutôt que des signatures apprises.
+  - Combinaison en ensemble (logique OU) : le rappel global passe de 70 % à 77,5 %, pour un coût modéré en faux positifs (2,99 % → 3,58 %).
+  - Ajout d'un indicateur de traçabilité (`flagged_by_anomaly_detector`) affiché dans le tableau de bord, pour expliquer les décisions issues d'Isolation Forest plutôt que de les laisser incohérentes avec la bande de risque affichée.
+- Correction de plusieurs incidents techniques : plantage du tableau de bord (conflit de version `pyarrow`), désynchronisation entre `analysis_engine.py` et la nouvelle signature de `risk_scorer.py`, bug de réinitialisation des filtres (perte d'état Streamlit lors de la navigation entre pages).
+- **Audit complet du projet** (10/08/2026) : vérification de l'état du dépôt Git (principal et sous-module), de la structure des fichiers, et de la documentation — mise à jour du journal technique et du README suite à ce constat.
+
+## Prochaine session
+
+- Poursuite de l'audit : structure GitHub, couverture de tests, guide d'installation.
+- Scénario d'attaque restant à valider : déni de service (Impact/TA0040).
+- Rédaction du rapport technique final et préparation de la démonstration.
