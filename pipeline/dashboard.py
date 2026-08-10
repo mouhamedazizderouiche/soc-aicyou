@@ -351,20 +351,58 @@ elif page == "🔴 Alertes en direct":
                        f"— cliquez à nouveau sur la carte pour le retirer.")
 
         # --- Filtres additionnels ---
+        # NOTE: chaque widget a une key= explicite - sans cela, Streamlit
+        # peut conserver un ancien etat (ex: selection vide) au lieu de
+        # reappliquer default= apres une navigation entre pages, ce qui
+        # causait le bug "0 alertes" observe precedemment.
+        reset_col, _ = st.columns([1, 5])
+        with reset_col:
+            if st.button("\U0001F504 R\u00e9initialiser les filtres"):
+                for k in ["flt_source", "flt_agent", "flt_rule", "flt_level", "flt_search"]:
+                    st.session_state.pop(k, None)
+                st.rerun()
+
         f1, f2, f3 = st.columns(3)
         with f1:
-            source_filter = st.multiselect("Source", alerts_df["source_type"].unique(),
-                                            default=list(alerts_df["source_type"].unique()))
+            source_filter = st.multiselect(
+                "Source", alerts_df["source_type"].unique(),
+                default=list(alerts_df["source_type"].unique()), key="flt_source",
+            )
         with f2:
-            agent_filter = st.multiselect("Agent", alerts_df["agent_name"].dropna().unique(),
-                                           default=list(alerts_df["agent_name"].dropna().unique()))
+            agent_filter = st.multiselect(
+                "Agent", alerts_df["agent_name"].dropna().unique(),
+                default=list(alerts_df["agent_name"].dropna().unique()), key="flt_agent",
+            )
         with f3:
-            search_text = st.text_input("🔍 Recherche (IP, description...)", "")
+            search_text = st.text_input("\U0001F50D Recherche (IP, description...)", "", key="flt_search")
+
+        NOISY_RULES_DEFAULT = ["Suricata: Alert - SURICATA QUIC failed decrypt"]
+        all_rules = sorted(alerts_df["rule_description"].dropna().unique())
+        default_rules = [r for r in all_rules if r not in NOISY_RULES_DEFAULT]
+
+        f4, f5 = st.columns([2, 1])
+        with f4:
+            rule_filter = st.multiselect(
+                "R\u00e8gle d\u00e9clench\u00e9e (bruit connu exclu par d\u00e9faut)",
+                all_rules, default=default_rules, key="flt_rule",
+            )
+        with f5:
+            level_range = st.slider(
+                "Plage de niveau de r\u00e8gle", 0, 15, (0, 15), key="flt_level",
+            )
 
         # --- Application des filtres ---
+        # Garde-fou : un multiselect vide ne doit jamais filtrer -> tout
+        # exclure silencieusement ; on retombe sur "tout" dans ce cas.
+        effective_source = source_filter if source_filter else list(alerts_df["source_type"].unique())
+        effective_agent = agent_filter if agent_filter else list(alerts_df["agent_name"].dropna().unique())
+        effective_rule = rule_filter if rule_filter else all_rules
+
         filtered = alerts_df[
-            alerts_df["source_type"].isin(source_filter)
-            & alerts_df["agent_name"].isin(agent_filter)
+            alerts_df["source_type"].isin(effective_source)
+            & alerts_df["agent_name"].isin(effective_agent)
+            & alerts_df["rule_description"].isin(effective_rule)
+            & alerts_df["rule_level"].fillna(0).between(level_range[0], level_range[1])
         ]
         if st.session_state.active_band_filter:
             filtered = filtered[filtered["risk_band"] == st.session_state.active_band_filter]
@@ -375,76 +413,76 @@ elif page == "🔴 Alertes en direct":
                 | filtered["dest_ip"].fillna("").str.contains(search_text, case=False)
             )
             filtered = filtered[mask]
+        st.caption(f"**{len(filtered)}** alertes correspondent aux filtres actifs "
+                   f"(sur {len(alerts_df)} charg\u00e9es)")
 
-        st.caption(f"**{len(filtered)}** alertes correspondent aux filtres actifs")
+    # --- Tableau avec sélection de ligne (drill-down) ---
+    display_cols = ["timestamp", "risk_band", "agent_name", "source_type",
+                     "rule_description", "rule_level", "src_ip", "dest_ip", "dest_port"]
+    display_df = filtered[display_cols + ["alert_id"]].sort_values(
+        "timestamp", ascending=False
+    ).reset_index(drop=True)
 
-        # --- Tableau avec sélection de ligne (drill-down) ---
-        display_cols = ["timestamp", "risk_band", "agent_name", "source_type",
-                         "rule_description", "rule_level", "src_ip", "dest_ip", "dest_port"]
-        display_df = filtered[display_cols + ["alert_id"]].sort_values(
-            "timestamp", ascending=False
-        ).reset_index(drop=True)
+    event = st.dataframe(
+        display_df,
+        use_container_width=True, height=340,
+        on_select="rerun", selection_mode="single-row",
+        column_order=display_cols,  # alert_id reste dans les données, caché à l'affichage
+    )
 
-        event = st.dataframe(
-            display_df,
-            use_container_width=True, height=340,
-            on_select="rerun", selection_mode="single-row",
-            column_order=display_cols,  # alert_id reste dans les données, caché à l'affichage
-        )
+    # --- Panneau de détail (drill-down au clic sur une ligne) ---
+    if event.selection and event.selection.get("rows"):
+        sel_idx = event.selection["rows"][0]
+        row = display_df.iloc[sel_idx]
 
-        # --- Panneau de détail (drill-down au clic sur une ligne) ---
-        if event.selection and event.selection.get("rows"):
-            sel_idx = event.selection["rows"][0]
-            row = display_df.iloc[sel_idx]
+        with st.expander("🔎 Détail de l'alerte sélectionnée", expanded=True):
+            dc1, dc2, dc3 = st.columns(3)
+            dc1.markdown(f"**Horodatage**\n\n{row['timestamp']}")
+            dc1.markdown(f"**Bande de risque**\n\n{risk_badge(row['risk_band'])}", unsafe_allow_html=True)
+            dc2.markdown(f"**Agent**\n\n{row['agent_name']}")
+            dc2.markdown(f"**Source**\n\n{row['source_type']}")
+            dc3.markdown(f"**IP source → destination**\n\n{row['src_ip']} → {row['dest_ip']}:{row['dest_port']}")
+            dc3.markdown(f"**Niveau de règle**\n\n{row['rule_level']}")
+            st.markdown(f"**Description**\n\n{row['rule_description']}")
 
-            with st.expander("🔎 Détail de l'alerte sélectionnée", expanded=True):
-                dc1, dc2, dc3 = st.columns(3)
-                dc1.markdown(f"**Horodatage**\n\n{row['timestamp']}")
-                dc1.markdown(f"**Bande de risque**\n\n{risk_badge(row['risk_band'])}", unsafe_allow_html=True)
-                dc2.markdown(f"**Agent**\n\n{row['agent_name']}")
-                dc2.markdown(f"**Source**\n\n{row['source_type']}")
-                dc3.markdown(f"**IP source → destination**\n\n{row['src_ip']} → {row['dest_ip']}:{row['dest_port']}")
-                dc3.markdown(f"**Niveau de règle**\n\n{row['rule_level']}")
-                st.markdown(f"**Description**\n\n{row['rule_description']}")
+            st.divider()
 
-                st.divider()
+            # --- Workflow de triage (persistant, comme un vrai poste analyste) ---
+            st.markdown("**Statut de triage**")
+            triage_log = load_triage_log()
+            current_status = triage_log.get(row["alert_id"], {}).get("status", "Nouveau")
+            st.caption(f"Statut actuel : **{current_status}**")
 
-                # --- Workflow de triage (persistant, comme un vrai poste analyste) ---
-                st.markdown("**Statut de triage**")
-                triage_log = load_triage_log()
-                current_status = triage_log.get(row["alert_id"], {}).get("status", "Nouveau")
-                st.caption(f"Statut actuel : **{current_status}**")
+            tcol1, tcol2, tcol3, tcol4 = st.columns(4)
+            status_map = {
+                tcol1: "Nouveau", tcol2: "En investigation",
+                tcol3: "Faux positif", tcol4: "Confirmé",
+            }
+            for col, status in status_map.items():
+                with col:
+                    if st.button(status, key=f"triage_{row['alert_id']}_{status}",
+                                 use_container_width=True,
+                                 type="primary" if current_status == status else "secondary"):
+                        triage_log[row["alert_id"]] = {
+                            "status": status,
+                            "updated_at": pd.Timestamp.utcnow().isoformat(),
+                        }
+                        save_triage_log(triage_log)
+                        st.rerun()
 
-                tcol1, tcol2, tcol3, tcol4 = st.columns(4)
-                status_map = {
-                    tcol1: "Nouveau", tcol2: "En investigation",
-                    tcol3: "Faux positif", tcol4: "Confirmé",
-                }
-                for col, status in status_map.items():
-                    with col:
-                        if st.button(status, key=f"triage_{row['alert_id']}_{status}",
-                                     use_container_width=True,
-                                     type="primary" if current_status == status else "secondary"):
-                            triage_log[row["alert_id"]] = {
-                                "status": status,
-                                "updated_at": pd.Timestamp.utcnow().isoformat(),
-                            }
-                            save_triage_log(triage_log)
-                            st.rerun()
+            st.divider()
 
-                st.divider()
-
-                # --- Corrélation par entité : que fait cette IP ailleurs ? ---
-                st.markdown(f"**🔗 Activité corrélée pour `{row['src_ip']}`**")
-                if row["src_ip"]:
-                    related = alerts_df[alerts_df["src_ip"] == row["src_ip"]]
-                    st.caption(f"{len(related)} événement(s) de cette source dans la fenêtre chargée")
-                    if len(related) > 1:
-                        related_display = related[["timestamp", "rule_description", "dest_ip", "dest_port"]] \
-                            .sort_values("timestamp", ascending=False).head(10)
-                        st.dataframe(related_display, use_container_width=True, hide_index=True, height=180)
-                else:
-                    st.caption("Pas d'IP source disponible pour cette alerte.")
+            # --- Corrélation par entité : que fait cette IP ailleurs ? ---
+            st.markdown(f"**🔗 Activité corrélée pour `{row['src_ip']}`**")
+            if row["src_ip"]:
+                related = alerts_df[alerts_df["src_ip"] == row["src_ip"]]
+                st.caption(f"{len(related)} événement(s) de cette source dans la fenêtre chargée")
+                if len(related) > 1:
+                    related_display = related[["timestamp", "rule_description", "dest_ip", "dest_port"]] \
+                        .sort_values("timestamp", ascending=False).head(10)
+                    st.dataframe(related_display, use_container_width=True, hide_index=True, height=180)
+            else:
+                st.caption("Pas d'IP source disponible pour cette alerte.")
 
         # --- Export CSV ---
         csv = filtered[display_cols].to_csv(index=False).encode("utf-8")
