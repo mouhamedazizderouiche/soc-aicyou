@@ -157,3 +157,36 @@ surveillance passive silencieux.
 **Méthodologie** : trouvé en testant sur l'échantillon complet plutôt que
 sur les 10 exemples de démo — un rappel que les tests sur petit échantillon
 peuvent manquer des cas structurels qui ne se manifestent qu'à l'échelle.
+
+## 14/08/2026 — Rapport de validation périmé, masquant l'amélioration de l'ensemble
+
+`data/validation_report.json` datait du 02/08 (avant `isolation_forest.pkl`,
+créé le 07/08) et affichait donc `detection_rate: 70.05%` — le score
+XGBoost seul — alors que le système réel tourne en ensemble depuis le
+07/08 (recall documenté : 77.5%). Le dashboard affichait donc un chiffre
+inférieur à la réalité sans que rien ne l'indique.
+
+`validation_report.py` lui-même était correct (`AnalysisEngine()` utilise
+`use_ensemble=True` par défaut) — le problème était purement l'absence
+de ré-exécution après le travail sur l'ensemble. Confirmé par re-run :
+77.51% / FPR 3.58%, cohérent avec `ensemble_evaluation.py`.
+
+Effet de bord détecté au passage : `pipeline_e2e_latency_ms` est passé de
+775.5ms (run du 02/08) à ~58-62ms (4 runs consécutifs le 14/08) — écart de
+~12x. Probablement un artefact de cold-start (premher run après boot/
+connexion Wazuh à froid) plutôt qu'une vraie dérive de performance, mais
+non confirmé formellement — documenté comme incertitude plutôt que
+tranché arbitrairement.
+
+**Correction** : `validation_report.json` inclut désormais `generated_at`
+et `pipeline_latency_note` (échantillon 200 alertes, un seul run — pas une
+moyenne stabilisée). Le dashboard affiche ces deux informations en
+légende sous les métriques, pour qu'un lecteur comprenne qu'il s'agit
+d'un instantané et non d'une mesure continue.
+
+**Leçon méthodologique** : deux bugs distincts trouvés aujourd'hui
+(recommandations anomaly-only muettes, rapport de validation périmé)
+partagent la même cause racine — un composant du système reflète un état
+antérieur du modèle/pipeline sans mécanisme pour le signaler. À surveiller
+ailleurs dans le système (ex. carte MITRE ATT&CK — les F1-scores affichés
+sont-ils à jour ?).
