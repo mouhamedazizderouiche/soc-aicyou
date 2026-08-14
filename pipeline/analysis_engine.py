@@ -6,6 +6,10 @@ la tactique MITRE probable (modèle multi-classe), et génère un contexte
 d'analyse + une recommandation lisible pour un analyste SOC.
 
 C'est le point d'entrée unique du moteur de détection intelligent.
+
+Les recommandations sont désormais générées par playbook.py
+(build_recommendation), ancrées dans docs/playbook-reponse-incidents.md,
+plutôt que par une table statique déconnectée du document de référence.
 """
 
 import logging
@@ -15,6 +19,7 @@ import joblib
 
 from risk_scorer import RiskScorer, OPERATIONAL_THRESHOLD
 from mitre_categories import TACTIC_MITRE_IDS
+from playbook import build_recommendation
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("analysis_engine")
@@ -24,17 +29,6 @@ TACTIC_DESCRIPTIONS = {
     "Reconnaissance": "Activité de sondage ou de collecte d'informations en préparation d'une attaque.",
     "InitialAccess_CredentialAccess": "Tentative d'accès non autorisé ou de compromission d'identifiants.",
     "PrivilegeEscalation": "Tentative d'obtention de privilèges système supérieurs.",
-}
-
-RECOMMENDATIONS = {
-    ("critical", "Impact"): "Vérifier immédiatement la disponibilité des services critiques. Envisager un blocage temporaire de la source si le trafic persiste.",
-    ("critical", "Reconnaissance"): "Isoler la source si possible. Vérifier les logs des systèmes ciblés pour une activité de suivi (exploitation post-scan).",
-    ("critical", "InitialAccess_CredentialAccess"): "Vérifier immédiatement les journaux d'authentification. Forcer une rotation des identifiants si compromission suspectée.",
-    ("critical", "PrivilegeEscalation"): "Investigation prioritaire : vérifier l'intégrité du système, les processus en cours et les modifications récentes de permissions.",
-    ("high", "Impact"): "Surveiller l'évolution du trafic. Préparer une réponse si l'activité s'intensifie.",
-    ("high", "Reconnaissance"): "Documenter la source pour corrélation future. Surveillance renforcée recommandée.",
-    ("high", "InitialAccess_CredentialAccess"): "Vérifier les tentatives d'authentification récentes associées à cette source.",
-    ("high", "PrivilegeEscalation"): "Vérification manuelle recommandée — signal faible mais catégorie à haut impact potentiel.",
 }
 
 DEFAULT_RECOMMENDATION = "Surveillance de routine — aucune action immédiate requise."
@@ -95,9 +89,13 @@ class AnalysisEngine:
             ]
 
             risk_bands = risk_assessment.loc[X_suspicious.index, "risk_band"]
+            anomaly_flags = risk_assessment.loc[X_suspicious.index, "flagged_by_anomaly_detector"]
+
             recommendations = [
-                RECOMMENDATIONS.get((band, tactic), DEFAULT_RECOMMENDATION)
-                for band, tactic in zip(risk_bands, tactic_names)
+                build_recommendation(band, tactic, confidence, bool(anomaly_flag))
+                for band, tactic, confidence, anomaly_flag in zip(
+                    risk_bands, tactic_names, tactic_confidence, anomaly_flags
+                )
             ]
             tactic_results.loc[X_suspicious.index, "recommendation"] = recommendations
 

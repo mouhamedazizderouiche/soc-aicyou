@@ -131,3 +131,29 @@ Ce journal documente les décisions techniques, incidents rencontrés et résolu
 - Poursuite de l'audit : structure GitHub, couverture de tests, guide d'installation.
 - Scénario d'attaque restant à valider : déni de service (Impact/TA0040).
 - Rédaction du rapport technique final et préparation de la démonstration.
+
+## 14/08/2026 — Bug de conception découvert lors des tests : recommandations muettes sur les détections Isolation-Forest-seul
+
+En testant `build_recommendation()` sur l'ensemble `X_test` complet (pas
+seulement l'échantillon de démo), 1015 alertes sur le total étaient
+capturées uniquement par Isolation Forest (`flagged_by_anomaly_detector=1`).
+Leur recommandation ne mentionnait jamais ce fait.
+
+**Cause** : `risk_band` est dérivé uniquement du score continu XGBoost
+(`risk_scorer.py`). Une alerte captée *seulement* par Isolation Forest a,
+par construction, un score XGBoost bas — sinon XGBoost l'aurait déjà
+signalée. Ces alertes tombent donc presque systématiquement en bande
+`low`/`medium`. La logique initiale de `build_recommendation()` retournait
+un texte générique dès la bande basse, avant même de vérifier
+`detected_by_anomaly` — masquant le signal précisément là où le principe
+documenté dans le playbook ("l'absence de signature connue ne signifie
+pas absence de risque") s'applique le plus.
+
+**Correction** : `detected_by_anomaly` est désormais vérifié avant tout
+court-circuit de bande. Une alerte low/medium mais anomaly-only reçoit
+maintenant une recommandation de vérification L1, pas un message de
+surveillance passive silencieux.
+
+**Méthodologie** : trouvé en testant sur l'échantillon complet plutôt que
+sur les 10 exemples de démo — un rappel que les tests sur petit échantillon
+peuvent manquer des cas structurels qui ne se manifestent qu'à l'échelle.
