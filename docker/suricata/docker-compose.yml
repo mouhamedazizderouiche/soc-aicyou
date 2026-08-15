@@ -9,6 +9,7 @@ services:
       - SYS_NICE
     volumes:
       - ./config/suricata.yaml:/etc/suricata/suricata.yaml
+      - ./config/threshold.config:/etc/suricata/threshold.config
       - /var/log/suricata:/var/log/suricata
       - suricata_rules:/var/lib/suricata/rules
       - ./config/rules:/etc/suricata/rules

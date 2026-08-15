@@ -401,3 +401,28 @@ plutôt que commit local). Recommandation pour la suite du projet : tout
 composant produisant une métrique, une recommandation, ou un état "validé"
 devrait pouvoir répondre explicitement à la question "sur quel sous-
 ensemble ceci a-t-il été vérifié, et qu'est-ce qui reste non-couvert ?"
+
+## Addendum 15/08/2026 — Suppression QUIC : deux bugs superposés, pas un
+
+Le point 5 ci-dessus notait la suppression du bruit QUIC (`sid:2231000`)
+comme résolue via `threshold.config` + décommentage de `threshold-file`
+dans `suricata.yaml`. Vérification a posteriori (tail live + génération
+de trafic QUIC réel depuis la VM Windows, pas une simple fenêtre
+d'observation passive) a révélé que **la suppression ne fonctionnait
+pas** : `docker-compose.yml` ne montait jamais `threshold.config` dans le
+conteneur -- `suricata.yaml` pointait correctement vers
+`/etc/suricata/threshold.config`, mais Suricata utilisait silencieusement
+le fichier gabarit par défaut de l'image (entièrement commenté), jamais
+le fichier réel créé sur la VM. Aucune erreur, aucun avertissement au
+démarrage -- le fichier par défaut est syntaxiquement valide, donc rien
+ne signalait le mount manquant. Corrigé : ligne de volume ajoutée à
+`docker-compose.yml`. Reconfirmé par le même test (tail live +
+génération de trafic QUIC réel) : silence total sur `sid:2231000`
+pendant navigation active.
+
+**Leçon** : un test de config qui passe (`suricata -T`) valide la
+syntaxe du fichier chargé, pas l'identité du fichier chargé. Une
+vérification "ça a l'air configuré" (fichier créé, directive décommentée,
+test de syntaxe propre) n'est pas équivalente à "ça fonctionne" tant que
+le comportement réel n'a pas été observé sous charge -- même leçon que
+les points 1 à 5, appliquée une sixième fois le même jour.
