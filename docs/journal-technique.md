@@ -426,3 +426,47 @@ vérification "ça a l'air configuré" (fichier créé, directive décommentée,
 test de syntaxe propre) n'est pas équivalente à "ça fonctionne" tant que
 le comportement réel n'a pas été observé sous charge -- même leçon que
 les points 1 à 5, appliquée une sixième fois le même jour.
+
+## 15/08/2026 — Mise à jour de docs/architecture.md
+
+`docs/architecture.md` était figé à l'état de fin de Phase 1 (infrastructure
++ déploiement Suricata uniquement) — aucune mention du pipeline, des
+modèles ML, du dashboard, des couches de détection, ni d'aucun des
+correctifs de cette session. Réécrit pour refléter l'état réel du système :
+
+- Nouvelle section 5 (pipeline) et section 6 (détection en profondeur,
+  trois couches) avec tableau de statut de validation par règle
+- Nouvelle section 7 : les deux mécanismes de correspondance MITRE ATT&CK
+  (basé règles vs basé IA) présentés séparément avec leur statut de
+  validation réel, plutôt que comme une capacité unique et équivalente
+- Nouvelle section 8 (Limites connues) : écart de schéma live/NSL-KDD en
+  tête de liste, PrivilegeEscalation, désambiguïsation scan/flood,
+  absence d'authentification dashboard, absence de politique de
+  rétention -- même standard de transparence que le reste du projet
+- Section 4 mise à jour avec le correctif de fork du submodule Wazuh
+- Sections 9-10 mises à jour (décisions techniques, prochaines étapes)
+
+## Clôture de session — 15/08/2026
+
+Six écarts trouvés et corrigés (ou honnêtement documentés comme non
+fermables dans le temps restant) en une session, tous partageant la même
+cause racine (voir "Leçon méthodologique transversale" ci-dessus).
+`docs/architecture.md` et `docs/journal-technique.md` sont désormais
+synchronisés avec l'état réel du code et de l'infrastructure.
+
+**État des livrables du cahier des charges à cette date :**
+
+| Livrable | Statut |
+|---|---|
+| Code source du prototype | ✅ Complet, poussé (main repo + fork wazuh-docker) |
+| Pipeline de collecte/traitement | ✅ Opérationnel, validé live |
+| Moteur de détection (signatures + comportemental) | ✅ Opérationnel, validé live (3 scénarios : reconnaissance, credential access, DoS) |
+| Moteur de détection (IA) | ⚠️ Validé rigoureusement sur NSL-KDD, non intégré au flux live (voir architecture.md section 8) |
+| Module de priorisation des alertes | ✅ Opérationnel (`risk_scorer.py`, bandes de risque) |
+| Module de correspondance MITRE ATT&CK | ⚠️ Partiellement live (règles), partiellement NSL-KDD-only (IA) -- voir architecture.md section 7 |
+| Tableau de bord de visualisation | ✅ Opérationnel, 4 pages |
+| Guide d'installation | ❌ Non commencé |
+| Rapport technique final | ❌ Non commencé (matière première complète dans ce journal) |
+| Démonstration fonctionnelle | ❌ Non préparée |
+
+**Prochaine session** : guide d'installation et/ou rapport technique final.
