@@ -12,3 +12,5 @@ alert tcp any any -> $HOME_NET any (msg:"CUSTOM Possible port scan detected (hig
 # sur une fenêtre plus longue, pour capturer les scans furtifs qui
 # essaient d'éviter la détection par volume.
 alert tcp any any -> $HOME_NET any (msg:"CUSTOM Possible slow port scan detected (low-and-slow reconnaissance)"; flags:S; threshold: type both, track by_src, count 10, seconds 60; classtype:attempted-recon; sid:9000002; rev:1;)
+#alert for DOS/YSNFLOOD attack 
+alert tcp any any -> $HOME_NET $SSH_PORTS (msg:"CUSTOM Possible SSH connection flood (volumetric DoS)"; flags:S; threshold: type both, track by_src, count 50, seconds 10; classtype:attempted-dos; sid:9000003; rev:1;)
