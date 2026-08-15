@@ -17,12 +17,25 @@ Le score continu (predict_proba pour XGBoost) est toujours conservé
 et transmis, même quand une classification binaire est demandée —
 la priorisation finale doit rester pilotable par un humain (analyste
 SOC), pas figée dans une coupure binaire stricte.
+
+Contrat de schéma (ajouté 15/08/2026) : chaque méthode publique valide
+explicitement que X correspond au schéma NSL-KDD attendu avant tout
+appel au modèle. Découvert le 15/08/2026 : appeler ce module avec des
+features du pipeline live (feature_extractor.py, schéma différent,
+sans recouvrement) provoquait soit un crash XGBoost cryptique (dtype
+non numérique), soit -- pire, si le nombre de colonnes avait coïncidé
+-- une prédiction silencieuse et dénuée de sens. Voir feature_schema.py
+et docs/journal-technique.md (entrée du 15/08/2026) pour l'analyse
+complète de cet écart architectural, non résolu par cette validation
+mais rendu explicite et diagnostiqué au lieu de silencieux.
 """
 
 import logging
 import joblib
 import xgboost as xgb
 import pandas as pd
+
+from feature_schema import validate_nsl_kdd_schema
 
 logger = logging.getLogger("risk_scorer")
 
@@ -73,12 +86,14 @@ class RiskScorer:
         risque). L'ensemble intervient au niveau de la classification
         binaire (classify/assess), pas du score continu.
         """
+        validate_nsl_kdd_schema(X, context="RiskScorer.score")
         return pd.Series(self.model.predict_proba(X)[:, 1], index=X.index)
 
     def _iso_flags(self, X: pd.DataFrame) -> pd.Series:
         """Retourne 1 si Isolation Forest juge l'échantillon anormal, 0 sinon."""
         if self.iso_model is None:
             return pd.Series([0] * len(X), index=X.index)
+        validate_nsl_kdd_schema(X, context="RiskScorer._iso_flags")
         raw_pred = self.iso_model.predict(X)  # -1 = anomalie, 1 = normal
         return pd.Series((raw_pred == -1).astype(int), index=X.index)
 
@@ -109,6 +124,8 @@ class RiskScorer:
         Isolation Forest qui a rattrapé une attaque manquée par XGBoost
         (utile pour la traçabilité/l'explicabilité de la décision).
         """
+        validate_nsl_kdd_schema(X, context="RiskScorer.assess")
+
         scores = self.score(X)
         xgb_flags = (scores >= OPERATIONAL_THRESHOLD).astype(int)
         iso_flags = self._iso_flags(X) if self.use_ensemble else pd.Series([0] * len(X), index=X.index)
