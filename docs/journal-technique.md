@@ -263,3 +263,141 @@ calculé. Root cause identique aux deux bugs précédents de la même
 journée (recommandations anomaly-only muettes, rapport de validation
 périmé) : un composant reflète un sous-ensemble de la réalité sans
 mécanisme pour signaler ce qui est hors périmètre.
+
+## 14-15/08/2026 — Session d'investigation approfondie : cinq écarts entre "semble validé" et "réellement testé"
+
+Session initiée par une simple question : "notre modèle peut-il vraiment
+détecter, recommander et cartographier MITRE ATT&CK correctement ?" Plutôt
+que d'accepter les métriques affichées, chaque composant du pipeline a été
+remis en question méthodiquement. Résultat : cinq écarts réels trouvés,
+compris, et corrigés -- tous partageant la même cause racine : un
+composant reflétait un sous-ensemble de la réalité (données de test
+connues, schéma d'entraînement, permissions git) sans mécanisme pour
+signaler ce qui restait hors périmètre.
+
+### 1. Recommandations muettes sur les détections Isolation-Forest-seul
+
+`build_recommendation()` court-circuitait sur les bandes low/medium avant
+de vérifier `detected_by_anomaly` -- or une alerte captée uniquement par
+Isolation Forest a, par construction, un score XGBoost bas, donc tombe
+presque systématiquement en bande low/medium. Le principe documenté du
+playbook ("l'absence de signature connue ne signifie pas absence de
+risque") ne s'appliquait donc jamais aux alertes où il comptait le plus.
+1015 alertes concernées sur le jeu de test complet. Corrigé : le
+signal anomalie est maintenant vérifié avant tout court-circuit de bande.
+
+### 2. Rapport de validation périmé (12 jours), masquant l'amélioration de l'ensemble
+
+`validation_report.json` datait d'avant la création d'`isolation_forest.pkl`
+et affichait donc le recall XGBoost seul (70.05%) au lieu du résultat
+ensemble réel (77.51%). Script de génération lui-même correct
+(`AnalysisEngine()` utilise `use_ensemble=True` par défaut) -- pure
+staleness, sans mécanisme de détection. Effet de bord détecté au passage :
+`pipeline_e2e_latency_ms` variait de 775ms (run périmé, probable
+cold-start) à ~58-62ms (4 runs frais consécutifs) -- écart non expliqué
+formellement, documenté comme incertitude plutôt que tranché arbitrairement.
+Corrigé : `generated_at` et `pipeline_latency_note` ajoutés au rapport,
+surfacés en légende sur le dashboard.
+
+### 3. Lacune de couverture MITRE ATT&CK : 29% des attaques du test set jamais évaluées
+
+`mitre_categories.py` ne couvrait que 22 des 39 types d'attaque NSL-KDD.
+`build_tactic_dataset()` filtre les labels "Unknown" du train ET du test
+set de façon identique -- transformant silencieusement une évaluation de
+généralisation en évaluation de mémorisation. Le chiffre documenté de
+~94% d'accuracy ne portait que sur les types connus. Deux catégories
+non couvertes (`mscan`: 996 occurrences, `apache2`: 737 occurrences)
+avaient déjà été vues prédites à confiance quasi-parfaite (100%, 99.7%)
+sans qu'aucune vérité terrain n'ait jamais validé ces prédictions
+précises. Corrigé : couverture étendue à 39/39 types (taxonomie standard
+NSL-KDD DoS/Probe/R2L/U2R, 3 cas ambigus tranchés explicitement et
+documentés : worm, ps, xterm). Ré-entraînement + ré-évaluation :
+accuracy réelle de généralisation = 83.2% (jamais mesurée auparavant),
+F1 par tactique : Impact 1.00→0.93, Reconnaissance 0.91→0.70,
+InitialAccess_CredentialAccess inchangé à 0.75, PrivilegeEscalation
+0.14→0.19. Métriques désormais sauvegardées dans
+`data/tactic_classifier_report.json` (horodaté) et lues dynamiquement
+par le dashboard au lieu d'être codées en dur.
+
+### 4. Écart architectural : le moteur ML n'a jamais tourné sur des données live
+
+Découverte en tentant de valider le scénario DoS sur le pipeline réel :
+`RiskScorer.assess()` plantait avec une erreur XGBoost cryptique sur les
+features live (`feature_extractor.py`, 14 colonnes agrégées par fenêtre :
+`event_count`, `unique_dest_ports`, etc.) contre le schéma NSL-KDD attendu
+(41 colonnes détaillées par session : `src_bytes`, `num_failed_logins`,
+`dst_host_serror_rate`, etc.). Aucun recouvrement de nom, deux espaces de
+features fondamentalement différents (agrégats temporels vs détail de
+session), pas convertibles l'un vers l'autre sans couche d'adaptation.
+**Constat majeur** : toute validation antérieure du moteur ML (rapports,
+dashboard, démonstrations, la ré-évaluation du point 3 ci-dessus) portait
+exclusivement sur des données NSL-KDD -- le moteur n'a jamais produit une
+seule prédiction valide sur du trafic réel capturé par Suricata/Wazuh.
+Corrigé (partiellement, par nécessité) : nouveau module `feature_schema.py`
+avec contrat de schéma explicite, validé à chaque point d'entrée public de
+`RiskScorer` (`score`, `_iso_flags`, `assess`). Un appel avec un schéma
+incompatible lève désormais `FeatureSchemaError` avec diagnostic complet
+(colonnes manquantes/en trop, détection heuristique "ressemble au pipeline
+live") au lieu d'un crash cryptique ou -- pire -- d'une prédiction
+silencieuse dénuée de sens si le nombre de colonnes coïncidait par hasard.
+**Ceci ne résout PAS l'écart architectural** -- fermer ce gap nécessiterait
+soit une couche d'adaptation de features, soit un nouveau modèle entraîné
+directement sur le schéma live ; les deux options dépassent le temps
+restant du stage. Documenté comme limite majeure connue plutôt que
+dissimulé.
+
+### 5. Validation live du scénario DoS + gaps découverts en cours de route
+
+Flood TCP de 300 connexions (PowerShell, VM Windows → VM cible, port 22)
+a révélé :
+- Les règles Suricata existantes (9000001/9000002, "port scan") n'ont
+  aucune logique de diversité de ports -- un flood mono-port déclenche la
+  même signature qu'un scan multi-ports. Nouvelle règle `sid:9000003`
+  ajoutée (`classtype:attempted-dos`, seuil 50 SYN/10s), avec limite
+  documentée explicitement : ne résout pas la désambiguïsation
+  largeur/profondeur (responsabilité de la couche ML, actuellement
+  indisponible sur données live -- voir point 4). Co-déclenchement des
+  trois règles sur un flood mono-port est attendu, pas un bug.
+- **Toutes** les alertes Suricata custom (y compris 9000001/9000002,
+  déjà livrées et "validées" plus tôt dans le projet) étaient noyées au
+  niveau générique 3 dans Wazuh -- sévérité identique au bruit de fond
+  (échecs de déchiffrement QUIC). Un scan actif et confirmé s'affichait
+  donc comme risque LOW sur le dashboard live. Nouvelles règles Wazuh
+  100012/100013/100014 (niveaux 8/8/12, alignés sur les SLA du playbook).
+  Bug de second ordre trouvé pendant la validation : `$(data.src_ip)`
+  copié des règles SSH (qui utilisent le décodeur natif sshd) ne
+  fonctionne pas pour les alertes Suricata (décodeur JSON générique,
+  champs à la racine) -- confirmé et corrigé via `wazuh-logtest` avant
+  redémarrage, évitant un second cycle self-guessing.
+- Bruit QUIC (`sid:2231000`) supprimé à la source
+  (`docker/suricata/config/threshold.config`) plutôt que seulement filtré
+  au niveau UI dashboard -- il gonflait tous les comptages d'événements
+  (totaux "Résumé automatique", Top Offenders), pas seulement l'affichage
+  d'une page.
+- **Découverte hors scope, corrigée séparément** : le submodule
+  `docker/wazuh-docker` pointait sur le dépôt officiel `wazuh/wazuh-docker`
+  (accès lecture seule) au lieu d'un fork personnel. Conséquence : tous
+  les commits précédents dans ce submodule -- y compris les règles SSH
+  brute-force (100010/100011) et le durcissement des identifiants,
+  livrés plus tôt dans le stage -- n'existaient qu'en local sur la VM,
+  jamais réellement accessibles sur GitHub malgré des commits en
+  apparence réussis. Fork créé (toutes branches, pas seulement main),
+  submodule repointé, historique complet poussé, `.gitmodules` mis à
+  jour. Vérifié par clone frais complet (`git clone --recurse-submodules`)
+  confirmant la résolution correcte du submodule.
+
+### Leçon méthodologique transversale
+
+Les cinq écarts ci-dessus, bien que dans des couches très différentes du
+système (logique applicative, staleness de rapport, couverture de
+données, contrat de schéma ML, configuration git), partagent une
+structure identique : **un filtre ou une hypothèse implicite exclut
+silencieusement une partie de la réalité, et rien ne signale ce qui est
+hors périmètre.** Aucun de ces bugs n'était visible par lecture de code
+seule -- chacun a été découvert en exécutant le système dans des
+conditions qu'il n'avait encore jamais rencontrées (données complètes
+plutôt qu'échantillon de démo, schéma live plutôt que NSL-KDD, push
+plutôt que commit local). Recommandation pour la suite du projet : tout
+composant produisant une métrique, une recommandation, ou un état "validé"
+devrait pouvoir répondre explicitement à la question "sur quel sous-
+ensemble ceci a-t-il été vérifié, et qu'est-ce qui reste non-couvert ?"
