@@ -1,4 +1,7 @@
-data/
+pipeline/data/*
+!pipeline/data/validation_report.json
+!pipeline/data/tactic_classifier_report.json
+!pipeline/data/triage_log.json
 .env
 *.key
 *.pem
@@ -6,4 +9,3 @@ certs/
 venv/
 __pycache__/
 *.pyc
-data/triage_log.json

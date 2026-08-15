@@ -11,6 +11,7 @@ le cahier des charges (section 3, Phase 5) :
 
 import time
 import json
+from datetime import datetime, timezone
 import pandas as pd
 from sklearn.metrics import confusion_matrix
 
@@ -122,12 +123,19 @@ print(f"Confiance moyenne de la tactique (cas critical) : {avg_confidence_critic
 # Sauvegarde du rapport consolidé
 # =========================================================
 report = {
+    "generated_at": datetime.now(timezone.utc).isoformat(),
     "detection_rate": round(detection_rate, 4),
     "false_positive_rate": round(false_positive_rate, 4),
     "ml_throughput_events_per_sec": round(throughput, 0),
     "ml_latency_ms_per_event": round(latency_per_event_ms, 4),
     "pipeline_e2e_latency_ms": round(total_pipeline_time * 1000, 1),
     "pipeline_throughput_events_per_sec": round(len(hits) / total_pipeline_time, 0) if total_pipeline_time > 0 else None,
+    "pipeline_latency_sample_size": len(hits),
+    "pipeline_latency_note": (
+        "Mesure sur un seul run, echantillon de "
+        f"{len(hits)} alertes live -- sensible aux conditions reseau/Indexer "
+        "au moment de l'execution, pas une moyenne stabilisee sur plusieurs runs."
+    ),
     "critical_alerts_count": int(total_critical),
     "critical_with_tactic_pct": round(critical_with_tactic / total_critical, 4) if total_critical else None,
     "avg_tactic_confidence_critical": round(float(avg_confidence_critical), 4) if not pd.isna(avg_confidence_critical) else None,

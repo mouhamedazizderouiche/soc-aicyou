@@ -190,3 +190,76 @@ partagent la même cause racine — un composant du système reflète un état
 antérieur du modèle/pipeline sans mécanisme pour le signaler. À surveiller
 ailleurs dans le système (ex. carte MITRE ATT&CK — les F1-scores affichés
 sont-ils à jour ?).
+
+## 14-15/08/2026 — Lacune de couverture MITRE ATT&CK : 29% des attaques du test set jamais évaluées
+
+**Origine** : question directe sur la fiabilité réelle du mapping MITRE
+ATT&CK affiché au dashboard. Investigation menée par remise en question
+systématique (le modèle a-t-il vraiment vu/évalué ce qu'il prétend
+classifier ?) plutôt qu'acceptation des métriques affichées.
+
+**Constat** : `mitre_categories.py` ne couvrait que les 22 types d'attaque
+présents dans KDDTrain+. Le jeu de test NSL-KDD est délibérément conçu
+pour inclure des types absents de l'entraînement (test de généralisation).
+`build_tactic_dataset()` (`tactic_classifier.py`) filtre les labels
+"Unknown" — donc 17 types d'attaque supplémentaires, soit **3750
+échantillons sur 12833 (29.2%) du test set d'attaques**, n'étaient jamais
+soumis à évaluation. Le chiffre documenté de ~94% d'accuracy ne portait
+donc que sur les 22 types connus, pas sur la capacité réelle du modèle
+à généraliser — alors que c'est précisément ce que le docstring du
+module revendiquait ("généralise à des comportements jamais vus sous ce
+label exact").
+
+Deux des types non couverts (`mscan` : 996 occurrences, `apache2` : 737
+occurrences) avaient déjà été vus prédits à 100% et 99.7% de confiance
+lors de tests antérieurs (14/08, session précédente) — confiance jamais
+vérifiée contre une vérité terrain.
+
+**Correction** :
+1. `mitre_categories.py` étendu à 39 types (couverture complète),
+   taxonomie standard NSL-KDD (DoS/Probe/R2L/U2R). Trois cas ambigus
+   dans la littérature tranchés explicitement et documentés en
+   commentaire plutôt que résolus silencieusement : `worm` → Impact,
+   `ps`/`xterm` → PrivilegeEscalation.
+2. Ré-entraînement + ré-évaluation (`tactic_classifier.py` et
+   `tactic_classifier_smote.py`) sur la couverture complète.
+3. `tactic_classifier_smote.py` sauvegarde désormais un rapport JSON
+   (`data/tactic_classifier_report.json`, horodaté) au lieu de laisser
+   les scores uniquement dans la sortie console.
+4. `dashboard.py` (page Carte MITRE ATT&CK) lit désormais ce rapport au
+   lieu de scores F1 codés en dur dans le code source — même correctif
+   de fond que pour `validation_report.json` (14/08, plus tôt la même
+   session).
+
+**Résultats avant/après (F1-score par tactique)** :
+
+| Tactique | Avant (22 types, non-disclosed gap) | Après (39 types, couverture complète) |
+|---|---|---|
+| Impact | 1.00 | 0.93 |
+| Reconnaissance | 0.91 | 0.70 |
+| InitialAccess_CredentialAccess | 0.75 | 0.75 |
+| PrivilegeEscalation | 0.14 | 0.19 |
+| **Accuracy globale** | ~94% (portée limitée) | **83.2%** (couverture complète) |
+
+**Interprétation honnête** : la chute de 94%→83% n'est PAS une
+régression du modèle — les données d'entraînement n'ont pas changé
+(NSL-KDD place les types inédits uniquement dans le test set par
+construction). C'est la première mesure honnête de la capacité de
+généralisation réelle du classifieur. Impact et
+InitialAccess_CredentialAccess généralisent raisonnablement bien.
+Reconnaissance perd en précision (confusion avec
+InitialAccess_CredentialAccess sur les nouveaux types R2L proches d'un
+scan). PrivilegeEscalation reste faible (précision 0.13) malgré SMOTE —
+la politique de traitement manuel systématique documentée dans le
+playbook, indépendante du score, absorbe ce risque opérationnellement
+sans le résoudre au niveau du modèle.
+
+**Leçon méthodologique** : un filtre de nettoyage de données
+(`tactics != "Unknown"`) appliqué de façon identique au train et au test
+set peut silencieusement transformer une évaluation de généralisation en
+évaluation de mémorisation, sans qu'aucune ligne de code ne mente
+explicitement — le biais est dans ce qui est exclu, pas dans ce qui est
+calculé. Root cause identique aux deux bugs précédents de la même
+journée (recommandations anomaly-only muettes, rapport de validation
+périmé) : un composant reflète un sous-ensemble de la réalité sans
+mécanisme pour signaler ce qui est hors périmètre.

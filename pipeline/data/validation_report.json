@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-08-14T09:13:10.032087+00:00",
+  "detection_rate": 0.7751,
+  "false_positive_rate": 0.0358,
+  "ml_throughput_events_per_sec": 92211.0,
+  "ml_latency_ms_per_event": 0.0108,
+  "pipeline_e2e_latency_ms": 58.3,
+  "pipeline_throughput_events_per_sec": 3430.0,
+  "pipeline_latency_sample_size": 200,
+  "pipeline_latency_note": "Mesure sur un seul run, echantillon de 200 alertes live -- sensible aux conditions reseau/Indexer au moment de l'execution, pas une moyenne stabilisee sur plusieurs runs.",
+  "critical_alerts_count": 8679,
+  "critical_with_tactic_pct": 1.0,
+  "avg_tactic_confidence_critical": 0.9971
+}

@@ -12,7 +12,7 @@ Lancement : streamlit run dashboard.py
 import json
 import os
 import time
-
+from datetime import datetime
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -108,7 +108,13 @@ def load_validation_report():
         with open(path) as f:
             return json.load(f)
     return None
-
+@st.cache_data(ttl=60)
+def load_tactic_report():
+    path = "data/tactic_classifier_report.json"
+    if os.path.exists(path):
+        with open(path) as f:
+            return json.load(f)
+    return None
 
 @st.cache_data(ttl=30)
 def load_live_alerts(size: int = 300):
@@ -246,7 +252,6 @@ if page == "📊 Vue d'ensemble":
     st.markdown("## Vue d'ensemble du système")
     st.markdown('<p class="soc-subtitle">Performance consolidée du pipeline de détection</p>', unsafe_allow_html=True)
     st.write("")
-
     if report:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Taux de détection", f"{report['detection_rate']:.1%}", help="Recall sur le jeu de test NSL-KDD")
@@ -260,6 +265,30 @@ if page == "📊 Vue d'ensemble":
         c5.metric("Latence pipeline (bout-en-bout)", f"{report.get('pipeline_e2e_latency_ms', 0):.0f} ms")
         c6.metric("Alertes critiques analysées", f"{report.get('critical_alerts_count', 0):,}")
         c7.metric("Cohérence risque → tactique", f"{report.get('critical_with_tactic_pct', 0):.0%}")
+
+        # Transparence : ces métriques sont un instantané figé (snapshot),
+        # pas des valeurs live -- elles ne changent qu'en relançant
+        # validation_report.py. Sans cette date, un lecteur pourrait
+        # raisonnablement croire qu'elles sont recalculées en continu.
+        generated_at_raw = report.get("generated_at")
+        if generated_at_raw:
+            try:
+                generated_dt = datetime.fromisoformat(generated_at_raw)
+                generated_label = generated_dt.strftime("%d/%m/%Y à %H:%M UTC")
+            except (ValueError, TypeError):
+                generated_label = generated_at_raw
+        else:
+            generated_label = "date inconnue (rapport généré avant l'ajout de l'horodatage)"
+
+        st.caption(
+            f"📸 Instantané généré le **{generated_label}** — pas une mesure live. "
+            "Relancer `python validation_report.py` après toute mise à jour du modèle "
+            "pour rafraîchir ces chiffres."
+        )
+
+        pipeline_note = report.get("pipeline_latency_note")
+        if pipeline_note:
+            st.caption(f"⚠️ {pipeline_note}")
     else:
         st.warning("Rapport de validation introuvable — lancer `python validation_report.py`.")
 
@@ -522,12 +551,48 @@ elif page == "🗺️ Carte MITRE ATT&CK":
     st.markdown('<p class="soc-subtitle">Tactiques couvertes par le moteur de classification</p>', unsafe_allow_html=True)
     st.write("")
 
-    tactic_info = {
-        "Impact": {"id": "TA0040", "desc": "Perturbation de disponibilité (DoS)", "f1": 1.00},
-        "Reconnaissance": {"id": "TA0043", "desc": "Sondage / collecte d'information", "f1": 0.91},
-        "InitialAccess_CredentialAccess": {"id": "TA0001/TA0006", "desc": "Accès non autorisé / vol d'identifiants", "f1": 0.75},
-        "PrivilegeEscalation": {"id": "TA0004", "desc": "Élévation de privilèges", "f1": 0.14},
+    TACTIC_DESCRIPTIONS_STATIC = {
+        "Impact": {"id": "TA0040", "desc": "Perturbation de disponibilité (DoS)"},
+        "Reconnaissance": {"id": "TA0043", "desc": "Sondage / collecte d'information"},
+        "InitialAccess_CredentialAccess": {"id": "TA0001/TA0006", "desc": "Accès non autorisé / vol d'identifiants"},
+        "PrivilegeEscalation": {"id": "TA0004", "desc": "Élévation de privilèges"},
     }
+
+    tactic_report = load_tactic_report()
+
+    if tactic_report:
+        tactic_info = {
+            tactic: {
+                "id": TACTIC_DESCRIPTIONS_STATIC[tactic]["id"],
+                "desc": TACTIC_DESCRIPTIONS_STATIC[tactic]["desc"],
+                "f1": tactic_report["per_tactic"][tactic]["f1_score"],
+            }
+            for tactic in TACTIC_DESCRIPTIONS_STATIC
+            if tactic in tactic_report.get("per_tactic", {})
+        }
+
+        try:
+            generated_dt = datetime.fromisoformat(tactic_report["generated_at"])
+            generated_label = generated_dt.strftime("%d/%m/%Y à %H:%M UTC")
+        except (ValueError, TypeError, KeyError):
+            generated_label = tactic_report.get("generated_at", "date inconnue")
+
+        coverage = tactic_report.get("attack_type_coverage", {})
+        st.caption(
+            f"📸 Métriques générées le **{generated_label}** — "
+            f"{coverage.get('total_types_mapped', '?')} types d'attaque NSL-KDD couverts. "
+            "Relancer `python tactic_classifier_smote.py` après toute mise à jour du modèle."
+        )
+    else:
+        # Repli sur les valeurs figées si le rapport n'existe pas encore
+        # (ex: avant la première exécution de tactic_classifier_smote.py)
+        tactic_info = {
+            "Impact": {"id": "TA0040", "desc": "Perturbation de disponibilité (DoS)", "f1": 1.00},
+            "Reconnaissance": {"id": "TA0043", "desc": "Sondage / collecte d'information", "f1": 0.91},
+            "InitialAccess_CredentialAccess": {"id": "TA0001/TA0006", "desc": "Accès non autorisé / vol d'identifiants", "f1": 0.75},
+            "PrivilegeEscalation": {"id": "TA0004", "desc": "Élévation de privilèges", "f1": 0.14},
+        }
+        st.warning("Rapport de métriques introuvable — valeurs figées affichées. Lancer `python tactic_classifier_smote.py`.")
 
     cols = st.columns(4)
     for col, (tactic, info) in zip(cols, tactic_info.items()):
@@ -544,7 +609,10 @@ elif page == "🗺️ Carte MITRE ATT&CK":
             """, unsafe_allow_html=True)
 
     st.write("")
-    st.warning("⚠️ **PrivilegeEscalation** reste la catégorie la plus faible (52 exemples d'entraînement réels) — "
+    pe_precision = tactic_info.get("PrivilegeEscalation", {}).get("f1")
+    pe_note = f" (F1 = {pe_precision:.2f})" if pe_precision is not None else ""
+    st.warning(f"⚠️ **PrivilegeEscalation** reste la catégorie la plus faible{pe_note} — "
+               "52 exemples d'entraînement réels, précision faible même après SMOTE modéré — "
                "traitée en priorité manuelle systématique quel que soit le score, voir `docs/playbook-reponse-incidents.md`.")
 
     df_tactic = pd.DataFrame([{"Tactique": k, "F1-score": v["f1"]} for k, v in tactic_info.items()])

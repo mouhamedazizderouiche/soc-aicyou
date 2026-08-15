@@ -152,10 +152,11 @@ PLAYBOOKS = {
         ],
         "validation_status": "weak_model",
         "limitations": (
-            "Le classifieur de tactique a la performance la plus faible sur cette categorie "
-            "(F1 = 0.14, 52 exemples d'entrainement reels seulement). Le score de confiance "
-            "ne doit PAS etre le seul filtre de decision pour cette tactique -- toute alerte "
-            "doit etre traitee en priorite manuelle systematique, meme a faible confiance."
+            "Le classifieur de tactique a la precision la plus faible sur cette categorie "
+            "(F1 = 0.19, precision = 0.13 -- 52 exemples d'entrainement reels seulement, "
+            "meme apres SMOTE modere x57). Le score de confiance ne doit PAS etre le seul "
+            "filtre de decision pour cette tactique -- toute alerte doit etre traitee en "
+            "priorite manuelle systematique, meme a faible confiance."
         ),
     },
 }
