@@ -685,16 +685,46 @@ Jeu de données : `https://rdm.uq.edu.au/files/650f1fa0-ef9c-11ed-b5f6-b1a04f482
 (accès ouvert). Intégrité vérifiée contre le manifeste BagIt fourni
 (`pipeline/data/netflow/manifest-sha1.txt`).
 
-### Constat annexe — `.env` obsolète
+### Constat annexe — `.env` obsolète, et ce qu'il cachait
 
-La VM a changé d'adresse en cours de projet : `192.168.1.112` →
-`192.168.1.249` (confirmé par le fait que le scan du 28/07 vise .112 et
-celui du 31/08 vise .249). `pipeline/.env` déclare encore
-`MONITORED_HOST_IP=192.168.1.112`. Les features `inbound_*` / `outbound_*`
-de `feature_extractor.py` sont donc calculées contre une adresse
-inactive et valent zéro sur tout trafic récent. Constaté, non corrigé
-dans cette session — à traiter avec la question de savoir si ces features
-survivent à la décision ci-dessus.
+Point de départ : `pipeline/.env` déclarait encore
+`MONITORED_HOST_IP=192.168.1.112` alors que `ens33` porte
+`192.168.1.249`. J'ai d'abord écrit que les features `inbound_*` /
+`outbound_*` « valent zéro sur tout trafic récent ». **C'était inexact**,
+et la mesure a révélé deux problèmes plus sérieux que l'adresse.
+
+**Mesure sur les 9627 alertes de `alerts.jsonl` :**
+
+| `MONITORED_HOST_IP` | événements entrants | événements sortants |
+|---|---|---|
+| `192.168.1.112` (ancienne valeur) | 6 | 5013 |
+| `192.168.1.249` (adresse réelle) | 0 | 4205 |
+
+Les features sortantes ne valaient donc pas zéro, y compris avec
+l'ancienne adresse : les deux IP apparaissent comme `flow_src_ip` dans ce
+corpus. Ma formulation initiale était fausse.
+
+**Problème réel n° 1 — la collecte est à l'arrêt depuis le 29/07/2026.**
+`data/checkpoint.txt` est figé à `2026-07-29T21:57:44Z`, tandis que
+l'indexeur Wazuh contient des alertes jusqu'au `2026-09-06T13:53:49Z`.
+`collector.py` est un tirage manuel, pas un service, et n'a pas été
+relancé depuis 39 jours. Tout ce qu'affichent `feature_extractor.py` et
+le tableau de bord repose sur un instantané de juillet — ce qui explique
+aussi que les campagnes d'attaque d'août (flood du 15/08, scan du 31/08)
+soient absentes de ce corpus alors qu'elles sont bien dans `eve.json`.
+
+**Problème réel n° 2 — les features `inbound_*` sont structurellement
+mortes.** 6 événements entrants sur 9627 alertes avec l'ancienne adresse,
+0 avec la nouvelle. La cause n'est pas l'IP : c'est la limite déjà écrite
+dans l'en-tête de `feature_extractor.py` — Wazuh n'indexe que les
+événements Suricata de type `alert`, et presque aucune alerte indexée
+n'a la machine surveillée comme *destination* de flux. Les alertes
+indexées portent le trafic sortant de la machine (anomalies QUIC/TLS,
+retransmissions), pas les connexions entrantes d'un scan.
+
+`MONITORED_HOST_IP` a été corrigé vers `192.168.1.249` (sauvegarde
+`.env.bak-20260906`). C'est juste, mais cela ne ranime pas les features
+entrantes. Les deux problèmes ci-dessus restent ouverts.
 
 ### État des livrables du cahier des charges au 06/09/2026
 
