@@ -1,0 +1,103 @@
+{
+  "live_dataset": "live_flows_labelled.csv",
+  "n_live_flows": 19209,
+  "live_class_distribution": {
+    "Reconnaissance": 9184,
+    "Benign": 8769,
+    "DoS": 1200,
+    "BruteForce": 56
+  },
+  "binary_threshold": 0.5,
+  "binary_overall": {
+    "tp": 0,
+    "fp": 1,
+    "fn": 10440,
+    "tn": 8768,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "false_positive_rate": 0.00011403808872163302
+  },
+  "binary_per_class": {
+    "Benign": {
+      "n": 8769,
+      "correct_rate": 0.9998859619112783,
+      "metric": "taux de bénins correctement non alertés"
+    },
+    "BruteForce": {
+      "n": 56,
+      "recall": 0.0,
+      "metric": "rappel"
+    },
+    "DoS": {
+      "n": 1200,
+      "recall": 0.0,
+      "metric": "rappel"
+    },
+    "Reconnaissance": {
+      "n": 9184,
+      "recall": 0.0,
+      "metric": "rappel"
+    }
+  },
+  "mean_attack_probability_per_class": {
+    "Benign": 0.06102147325873375,
+    "BruteForce": 0.004372029099613428,
+    "DoS": 0.023456791415810585,
+    "Reconnaissance": 0.009417622350156307
+  },
+  "multiclass_crosstab_parent": {
+    "Benign": {
+      "Benign": 8769,
+      "BruteForce": 56,
+      "DoS": 1200,
+      "Reconnaissance": 9184
+    }
+  },
+  "multiclass_crosstab_fine": {
+    "Benign": {
+      "Benign": 8769,
+      "BruteForce": 56,
+      "DoS": 1200,
+      "Reconnaissance": 9184
+    }
+  },
+  "multiclass_per_class": {
+    "Benign": {
+      "evaluable": true,
+      "accuracy": 1.0,
+      "acceptable_as_correct": [
+        "Benign"
+      ]
+    },
+    "BruteForce": {
+      "evaluable": true,
+      "accuracy": 0.0,
+      "acceptable_as_correct": [
+        "BruteForce"
+      ]
+    },
+    "DoS": {
+      "evaluable": true,
+      "accuracy": 0.0,
+      "acceptable_as_correct": [
+        "DDoS",
+        "DoS"
+      ]
+    },
+    "Reconnaissance": {
+      "evaluable": false,
+      "top_predictions": {
+        "Benign": 9184
+      }
+    }
+  },
+  "gate": {
+    "criterion_recall": 0.5,
+    "classes": [
+      "Reconnaissance",
+      "DoS"
+    ],
+    "passed": false
+  }
+}

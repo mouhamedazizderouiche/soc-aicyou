@@ -1,0 +1,115 @@
+{
+  "control_source_domain": {
+    "Benign": {
+      "n": 2000,
+      "rate": 1.0,
+      "mean_proba": 0.07752946764230728
+    },
+    "DDoS attacks-LOIC-HTTP": {
+      "n": 2000,
+      "rate": 1.0,
+      "mean_proba": 0.9999818205833435
+    },
+    "DoS attacks-GoldenEye": {
+      "n": 2000,
+      "rate": 1.0,
+      "mean_proba": 0.9997463226318359
+    },
+    "DoS attacks-Hulk": {
+      "n": 2000,
+      "rate": 1.0,
+      "mean_proba": 0.9997210502624512
+    },
+    "DoS attacks-Slowloris": {
+      "n": 2000,
+      "rate": 1.0,
+      "mean_proba": 0.9995858073234558
+    },
+    "FTP-BruteForce": {
+      "n": 2000,
+      "rate": 1.0,
+      "mean_proba": 0.9999959468841553
+    },
+    "SSH-Bruteforce": {
+      "n": 2000,
+      "rate": 1.0,
+      "mean_proba": 0.9999774098396301
+    }
+  },
+  "threshold_sweep": {
+    "0.5": {
+      "Reconnaissance": 0.0,
+      "DoS": 0.0,
+      "BruteForce": 0.0,
+      "false_positive_rate": 0.00011403808872163302
+    },
+    "0.3": {
+      "Reconnaissance": 0.003048780487804878,
+      "DoS": 0.0,
+      "BruteForce": 0.0,
+      "false_positive_rate": 0.0009123047097730642
+    },
+    "0.2": {
+      "Reconnaissance": 0.023736933797909407,
+      "DoS": 0.0,
+      "BruteForce": 0.0,
+      "false_positive_rate": 0.03877295016535523
+    },
+    "0.1": {
+      "Reconnaissance": 0.03636759581881533,
+      "DoS": 0.015,
+      "BruteForce": 0.0,
+      "false_positive_rate": 0.280305622077774
+    },
+    "0.05": {
+      "Reconnaissance": 0.04202961672473868,
+      "DoS": 0.024166666666666666,
+      "BruteForce": 0.0,
+      "false_positive_rate": 0.4693807731782415
+    },
+    "0.03": {
+      "Reconnaissance": 0.04213850174216028,
+      "DoS": 0.24166666666666667,
+      "BruteForce": 0.0,
+      "false_positive_rate": 0.504048352149618
+    },
+    "0.02": {
+      "Reconnaissance": 0.043227351916376305,
+      "DoS": 0.675,
+      "BruteForce": 0.0,
+      "false_positive_rate": 0.5080396852548751
+    },
+    "0.01": {
+      "Reconnaissance": 0.052700348432055746,
+      "DoS": 0.6941666666666667,
+      "BruteForce": 0.017857142857142856,
+      "false_positive_rate": 0.5283384650473258
+    }
+  },
+  "auc_roc": 0.16035876557482842,
+  "auc_pr": 0.3894047023329196,
+  "positive_rate": 0.54349523660784,
+  "auc_roc_per_class": {
+    "Reconnaissance": 0.13065706650725173,
+    "DoS": 0.3778978978978979,
+    "BruteForce": 0.3698845771630582
+  },
+  "feature_importances": {
+    "L4_SRC_PORT": 0.00634435610845685,
+    "L4_DST_PORT": 0.3137687146663666,
+    "PROTOCOL": 0.03272751346230507,
+    "L7_PROTO": 0.027370654046535492,
+    "IN_BYTES": 0.0034278540406376123,
+    "OUT_BYTES": 0.001997936749830842,
+    "IN_PKTS": 0.0013614498311653733,
+    "OUT_PKTS": 0.600366473197937,
+    "TCP_FLAGS": 0.011056588962674141,
+    "FLOW_DURATION_MILLISECONDS": 0.001578558818437159
+  },
+  "attack_port_overlap": {
+    "n_source_ports": 189,
+    "n_live_ports": 1000,
+    "n_common": 17,
+    "live_attack_flows_on_known_attack_port": 0.16024904214559388
+  }
+}

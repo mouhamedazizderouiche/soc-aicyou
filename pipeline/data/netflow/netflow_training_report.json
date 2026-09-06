@@ -1,0 +1,528 @@
+{
+  "dataset": "NF-CSE-CIC-IDS2018.csv",
+  "n_jobs": 4,
+  "n_total": 8392401,
+  "n_train": 5874680,
+  "n_test": 2517721,
+  "features": [
+    "L4_SRC_PORT",
+    "L4_DST_PORT",
+    "PROTOCOL",
+    "L7_PROTO",
+    "IN_BYTES",
+    "OUT_BYTES",
+    "IN_PKTS",
+    "OUT_PKTS",
+    "TCP_FLAGS",
+    "FLOW_DURATION_MILLISECONDS"
+  ],
+  "class_names": [
+    "Benign",
+    "Bot",
+    "Brute Force -Web",
+    "Brute Force -XSS",
+    "DDOS attack-HOIC",
+    "DDOS attack-LOIC-UDP",
+    "DDoS attacks-LOIC-HTTP",
+    "DoS attacks-GoldenEye",
+    "DoS attacks-Hulk",
+    "DoS attacks-SlowHTTPTest",
+    "DoS attacks-Slowloris",
+    "FTP-BruteForce",
+    "Infilteration",
+    "SQL Injection",
+    "SSH-Bruteforce"
+  ],
+  "random_state": 42,
+  "models": {
+    "extra_trees_multiclass": {
+      "n_train_used": 1000000,
+      "subsampled": true,
+      "n_estimators": 50,
+      "train_seconds": null,
+      "reloaded_from_disk": true,
+      "per_class": {
+        "Benign": {
+          "precision": 0.992925386366078,
+          "recall": 0.9944632814336607,
+          "f1-score": 0.993693738867484,
+          "support": 2211960.0
+        },
+        "Bot": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 4705.0
+        },
+        "Brute Force -Web": {
+          "precision": 0.8636363636363636,
+          "recall": 0.3392857142857143,
+          "f1-score": 0.48717948717948717,
+          "support": 784.0
+        },
+        "Brute Force -XSS": {
+          "precision": 0.48807157057654077,
+          "recall": 0.9388145315487572,
+          "f1-score": 0.6422498364944408,
+          "support": 523.0
+        },
+        "DDOS attack-HOIC": {
+          "precision": 0.390625,
+          "recall": 0.36231884057971014,
+          "f1-score": 0.37593984962406013,
+          "support": 69.0
+        },
+        "DDOS attack-LOIC-UDP": {
+          "precision": 0.9515503875968992,
+          "recall": 0.982,
+          "f1-score": 0.9665354330708661,
+          "support": 500.0
+        },
+        "DDoS attacks-LOIC-HTTP": {
+          "precision": 0.99992066500357,
+          "recall": 0.9997708443504318,
+          "f1-score": 0.9998457490645782,
+          "support": 113460.0
+        },
+        "DoS attacks-GoldenEye": {
+          "precision": 0.9984785475200325,
+          "recall": 0.9988838153221715,
+          "f1-score": 0.9986811403063812,
+          "support": 9855.0
+        },
+        "DoS attacks-Hulk": {
+          "precision": 0.9997533604636824,
+          "recall": 0.9995992725255078,
+          "f1-score": 0.9996763105569,
+          "support": 32441.0
+        },
+        "DoS attacks-SlowHTTPTest": {
+          "precision": 0.31768756795940556,
+          "recall": 0.3875256592452234,
+          "f1-score": 0.349148539642344,
+          "support": 31665.0
+        },
+        "DoS attacks-Slowloris": {
+          "precision": 0.9976672984400058,
+          "recall": 0.999415802541259,
+          "f1-score": 0.998540785057639,
+          "support": 6847.0
+        },
+        "FTP-BruteForce": {
+          "precision": 0.6200783545543584,
+          "recall": 0.5457005930216522,
+          "f1-score": 0.5805167892314181,
+          "support": 58008.0
+        },
+        "Infilteration": {
+          "precision": 0.19567510548523206,
+          "recall": 0.1593813768660724,
+          "f1-score": 0.17567327611719444,
+          "support": 18622.0
+        },
+        "SQL Injection": {
+          "precision": 0.23076923076923078,
+          "recall": 0.2727272727272727,
+          "f1-score": 0.25,
+          "support": 11.0
+        },
+        "SSH-Bruteforce": {
+          "precision": 0.9992574782547203,
+          "recall": 0.9996462806409395,
+          "f1-score": 0.9994518416352802,
+          "support": 28271.0
+        }
+      },
+      "macro_avg": {
+        "precision": 0.7364064211084079,
+        "recall": 0.7319688856725582,
+        "f1-score": 0.7211421851232048,
+        "support": 2517721.0
+      },
+      "accuracy": 0.9704800492191152
+    },
+    "xgboost_binary": {
+      "n_train_used": 5874680,
+      "n_estimators": 200,
+      "train_seconds": null,
+      "reloaded_from_disk": true,
+      "per_class": {
+        "Benign": {
+          "precision": 0.9928344557106468,
+          "recall": 0.9991048662724461,
+          "f1-score": 0.9959597917028137,
+          "support": 2211960.0
+        },
+        "Attack": {
+          "precision": 0.9932143212093587,
+          "recall": 0.9478350737994709,
+          "f1-score": 0.9699942431788363,
+          "support": 305761.0
+        }
+      },
+      "accuracy": 0.9928784801810844
+    },
+    "xgboost_multiclass": {
+      "n_train_used": 5874680,
+      "n_estimators": 200,
+      "train_seconds": 668.2,
+      "reloaded_from_disk": false,
+      "per_class": {
+        "Benign": {
+          "precision": 0.9924513113395456,
+          "recall": 0.9999168158556213,
+          "f1-score": 0.9961700767853777,
+          "support": 2211960.0
+        },
+        "Bot": {
+          "precision": 0.9995751009135331,
+          "recall": 1.0,
+          "f1-score": 0.9997875053123672,
+          "support": 4705.0
+        },
+        "Brute Force -Web": {
+          "precision": 0.5864,
+          "recall": 0.9349489795918368,
+          "f1-score": 0.7207472959685349,
+          "support": 784.0
+        },
+        "Brute Force -XSS": {
+          "precision": 0.08,
+          "recall": 0.0038240917782026767,
+          "f1-score": 0.0072992700729927005,
+          "support": 523.0
+        },
+        "DDOS attack-HOIC": {
+          "precision": 0.10144927536231885,
+          "recall": 0.10144927536231885,
+          "f1-score": 0.10144927536231885,
+          "support": 69.0
+        },
+        "DDOS attack-LOIC-UDP": {
+          "precision": 0.9686888454011742,
+          "recall": 0.99,
+          "f1-score": 0.9792284866468842,
+          "support": 500.0
+        },
+        "DDoS attacks-LOIC-HTTP": {
+          "precision": 0.9999559273329867,
+          "recall": 0.9998589811387273,
+          "f1-score": 0.9999074518859984,
+          "support": 113460.0
+        },
+        "DoS attacks-GoldenEye": {
+          "precision": 0.9994922311363867,
+          "recall": 0.9986808726534754,
+          "f1-score": 0.9990863871688154,
+          "support": 9855.0
+        },
+        "DoS attacks-Hulk": {
+          "precision": 0.9996918145956607,
+          "recall": 0.9999075244289634,
+          "f1-score": 0.9997996578772982,
+          "support": 32441.0
+        },
+        "DoS attacks-SlowHTTPTest": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 31665.0
+        },
+        "DoS attacks-Slowloris": {
+          "precision": 0.9981038506417736,
+          "recall": 0.999415802541259,
+          "f1-score": 0.9987593957527549,
+          "support": 6847.0
+        },
+        "FTP-BruteForce": {
+          "precision": 0.6468043352214442,
+          "recall": 1.0,
+          "f1-score": 0.785526636513826,
+          "support": 58008.0
+        },
+        "Infilteration": {
+          "precision": 0.9159159159159159,
+          "recall": 0.09827086242079261,
+          "f1-score": 0.17749757516973813,
+          "support": 18622.0
+        },
+        "SQL Injection": {
+          "precision": 0.2857142857142857,
+          "recall": 0.36363636363636365,
+          "f1-score": 0.32,
+          "support": 11.0
+        },
+        "SSH-Bruteforce": {
+          "precision": 0.9998938579111237,
+          "recall": 0.9996462806409395,
+          "f1-score": 0.9997700539488812,
+          "support": 28271.0
+        }
+      },
+      "macro_avg": {
+        "precision": 0.7049424500990766,
+        "recall": 0.6993037233365667,
+        "f1-score": 0.6723352712310524,
+        "support": 2517721.0
+      },
+      "accuracy": 0.9804056922907661,
+      "confusion_matrix": [
+        [
+          2211776,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          4,
+          5,
+          0,
+          1,
+          1,
+          168,
+          0,
+          3
+        ],
+        [
+          0,
+          4705,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          12,
+          0,
+          733,
+          4,
+          35,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          15,
+          0,
+          485,
+          2,
+          21,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          32,
+          19,
+          7,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          10,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          495,
+          5,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          16,
+          113444,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          9842,
+          2,
+          0,
+          11,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          32438,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          31665,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          3,
+          0,
+          6843,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          58008,
+          0,
+          0,
+          0
+        ],
+        [
+          16792,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1830,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          6,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          4,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          10,
+          0,
+          0,
+          28261
+        ]
+      ]
+    }
+  }
+}

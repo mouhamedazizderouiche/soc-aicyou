@@ -2,6 +2,15 @@ pipeline/data/*
 !pipeline/data/validation_report.json
 !pipeline/data/tactic_classifier_report.json
 !pipeline/data/triage_log.json
+# Rapports du chantier NetFlow : petits fichiers JSON qui constituent
+# la trace vérifiable des mesures citées dans docs/. Versionnés
+# volontairement ; les modèles et le CSV du jeu (620 Mo) ne le sont pas.
+!pipeline/data/netflow/
+pipeline/data/netflow/*
+!pipeline/data/netflow/netflow_training_report.json
+!pipeline/data/netflow/netflow_transfer_report.json
+!pipeline/data/netflow/netflow_transfer_diagnostics.json
+!pipeline/data/netflow/manifest-sha1.txt
 .env
 *.key
 *.pem
