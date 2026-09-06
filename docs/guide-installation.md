@@ -58,22 +58,30 @@ git submodule update --init --recursive
 
 ```bash
 cd docker/wazuh-docker/single-node
-cp .env.example .env   # si absent, créer manuellement (voir variables ci-dessous)
+cp .env.example .env
 ```
 
-Éditer `.env` et renseigner des valeurs fortes générées, par exemple :
+Éditer `.env` et remplacer chaque `CHANGE_ME` par une valeur forte,
+distincte pour chacune :
 ```bash
 openssl rand -base64 24
 ```
 
-Variables requises dans `.env` :
-INDEXER_USERNAME=admin
-INDEXER_PASSWORD=<généré>
-API_USERNAME=wazuh-wui
-API_PASSWORD=<généré>
-DASHBOARD_USERNAME=kibanaserver
-DASHBOARD_PASSWORD=<généré>
-WAZUH_VERSION=4.9.0
+**Trois variables sont requises**, et ce sont les seules que
+`docker-compose.yml` interpole réellement :
+
+| Variable | Compte associé |
+|---|---|
+| `INDEXER_PASSWORD` | `admin` (indexeur OpenSearch) |
+| `API_PASSWORD` | `wazuh-wui` (API du manager) |
+| `DASHBOARD_PASSWORD` | `kibanaserver` (dashboard) |
+
+Les noms d'utilisateur correspondants sont codés en dur dans
+`docker-compose.yml` et ne se paramètrent pas via `.env` — les y définir
+n'aurait aucun effet. De même, la version de Wazuh est figée dans les tags
+d'image (`4.9.0`), volontairement, pour la reproductibilité : il n'existe
+pas de variable `WAZUH_VERSION`.
+
 **Ne jamais utiliser les mots de passe par défaut du dépôt officiel**
 (`admin/admin`, `kibanaserver/kibanaserver`) — c'est le premier
 durcissement appliqué dans ce projet.
