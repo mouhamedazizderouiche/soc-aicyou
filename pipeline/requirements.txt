@@ -28,3 +28,5 @@ imbalanced-learn==0.12.4
 plotly==5.24.1
 streamlit==1.39.0
 pyarrow==17.0.0
+# Développement — suite de tests (pipeline/tests/)
+pytest==9.1.1
