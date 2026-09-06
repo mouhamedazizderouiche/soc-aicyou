@@ -3,13 +3,13 @@
 **Stagiaire :** Mouhamed Aziz Derouiche
 **Encadrant :** Dr. Alaidine Ben Ayed — Stratégie AICYOU Inc.
 **Repo :** `soc-aicyou`
-**Dernière mise à jour :** 15/08/2026
+**Dernière mise à jour :** 06/09/2026
 
 ## 1. Vue d'ensemble
 
 Environnement de lab SOC déployé sur une VM Ubuntu Server 22.04 LTS dédiée, hébergeant une stack Wazuh (SIEM/HIDS) et Suricata (NIDS), orchestrés via Docker Compose. Le système collecte, normalise et analyse des événements de sécurité selon trois couches de détection complémentaires (signatures, comportementale/règles, intelligence artificielle), avec priorisation automatique des alertes et correspondance MITRE ATT&CK, exposées via un tableau de bord Streamlit.
 
-**Portée actuelle** (voir section 8, Limites connues, pour le détail honnête) : les couches signatures et comportementale (Suricata + Wazuh) sont pleinement opérationnelles et validées sur trafic réel. La couche IA (scoring de risque + classification de tactique) est rigoureusement validée sur le jeu de données NSL-KDD, mais n'est pas encore intégrée au flux de données live — un écart de schéma de features architectural, documenté en section 8, reste à combler.
+**Portée actuelle** (voir section 8, Limites connues, pour le détail honnête) : les couches signatures et comportementale (Suricata + Wazuh) sont pleinement opérationnelles et validées sur trafic réel. La couche IA (scoring de risque + classification de tactique) est rigoureusement validée sur le jeu de données NSL-KDD, mais n'est pas intégrée au flux de données live — un écart de schéma de features architectural, documenté en section 8. Une voie de résolution (schéma NetFlow standard + modèle entraîné sur NF-CSE-CIC-IDS2018) a été testée le 06/09/2026 et **écartée sur mesure** : rappel de 0 sur 10 440 attaques réelles, AUC-ROC 0,1604.
 
 ## 2. Infrastructure
 
@@ -115,11 +115,25 @@ Point important pour une lecture honnête du système : le mapping MITRE ATT&CK 
 
 Les deux mécanismes répondent chacun à une partie de l'objectif du cahier des charges (*"associer automatiquement les événements détectés aux techniques du référentiel MITRE ATT&CK"*), mais avec des garanties de fiabilité différentes qu'il serait malhonnête de présenter comme équivalentes.
 
+**Mise à jour du 06/09/2026.** Une tentative de rendre le mécanisme IA opérationnel sur le trafic live a été menée et **a échoué de façon mesurée** : voir section 8 et `docs/journal-technique.md`, entrée du 06/09/2026. Le statut du mécanisme basé IA reste donc inchangé — validé sur NSL-KDD, jamais exécuté avec succès sur trafic live. Ce n'est plus une limite seulement identifiée, c'est désormais une limite dont une voie de résolution a été testée et écartée sur preuve.
+
+
 ## 8. Limites connues (transparence)
 
 Cette section liste les limites actuelles du système, identifiées par tests rigoureux plutôt que supposées absentes. Philosophie du projet : documenter honnêtement ce qui n'est pas résolu plutôt que le dissimuler.
 
-- **Écart architectural majeur — le moteur IA n'a jamais tourné sur des données live.** `feature_extractor.py` produit 14 colonnes agrégées par fenêtre temporelle (`event_count`, `unique_dest_ports`, etc.), tandis que les modèles sont entraînés sur le schéma NSL-KDD (41 colonnes détaillées par session : `src_bytes`, `num_failed_logins`, `dst_host_serror_rate`, etc.). Aucun recouvrement, deux espaces de features fondamentalement différents. Toute validation ML antérieure (rapports, dashboard, démonstrations) porte exclusivement sur NSL-KDD. `feature_schema.py` (15/08/2026) empêche désormais un échec silencieux ou cryptique (`FeatureSchemaError` avec diagnostic complet), mais ne résout pas l'écart lui-même. Fermeture réelle nécessiterait soit une couche d'adaptation de features, soit un nouveau modèle entraîné directement sur le schéma live — hors du temps restant du stage, à documenter comme axe de poursuite.
+- **Écart architectural majeur — le moteur IA n'a jamais tourné sur des données live.** `feature_extractor.py` produit 14 colonnes agrégées par fenêtre temporelle (`event_count`, `unique_dest_ports`, etc.), tandis que les modèles sont entraînés sur le schéma NSL-KDD (41 colonnes détaillées par session). Aucun recouvrement. Toute validation ML (rapports, dashboard, démonstrations) porte exclusivement sur NSL-KDD. `feature_schema.py` (15/08/2026) empêche un échec silencieux ou cryptique, mais ne résout pas l'écart.
+
+  **Une voie de résolution a été testée et écartée sur preuve (06/09/2026).** Plutôt qu'une couche d'adaptation entre deux schémas incompatibles, l'approche consistait à produire depuis le trafic live un schéma *identique* à celui d'un jeu public étiqueté — NetFlow standard v1, 12 features (Sarhan et al., BDTA 2020) — et à y appliquer un modèle entraîné sur NF-CSE-CIC-IDS2018 (8 392 401 flux). Une porte de décision était fixée avant mesure et inscrite dans le code : rappel binaire > 50 % sur scan et DoS.
+
+  **Résultat : 0 attaque détectée sur 10 440** flux réels étiquetés. Et le résultat est plus fort qu'un défaut de généralisation — **AUC-ROC = 0,1604**, très en dessous de 0,5 : le modèle est systématiquement *anti-corrélé*, attribuant une probabilité d'attaque plus basse aux vraies attaques (0,004–0,024) qu'au trafic bénin (0,061). Deux hypothèses concurrentes ont été écartées par la mesure : le pipeline d'inférence est correct (rappel 1,0000 sur les mêmes classes côté jeu source, par le même chemin de code), et ce n'est pas un problème de seuil (l'AUC n'en dépend pas ; descendre à 0,01 ne récupère du rappel qu'au prix de 52,8 % de faux positifs).
+
+  Mécanisme mesuré : deux features portent 91 % de la décision — `OUT_PKTS` (0,6004) et `L4_DST_PORT` (0,3138) — et ce sont précisément celles qui ne transfèrent pas. Les attaques du banc CIC se concentrent à ~90 % sur les ports 53/80/443/8080 ; les nôtres s'étalent sur 1000 ports (scan nmap), avec seulement 16,0 % des flux d'attaque live sur un port déjà vu comme attaque à l'entraînement. Le modèle a appris le profil du banc d'essai, pas un comportement d'attaque transférable.
+
+  Ce qui reste utilisable : `flow_feature_extractor.py` (12 features NetFlow v1 depuis le trafic réel, deux contrats vérifiables) et `netflow_ground_truth.py` (19 209 flux réels étiquetés depuis des sources externes aux features). Détail complet, chiffres et reproduction : `docs/journal-technique.md`, entrée du 06/09/2026.
+
+  **Conséquence de portée.** Trois livrables du cahier des charges — moteur de détection intelligent, module de priorisation, correspondance MITRE ATT&CK — restent partiels pour cette raison unique, et le demeurent après cette tentative. La fermeture réelle passerait par un modèle entraîné sur du trafic du réseau lui-même, ce que les 19 209 flux étiquetés rendent désormais possible mais qui n'a pas été entrepris dans cette session.
+
 - **PrivilegeEscalation reste la catégorie la plus faible du classifieur de tactique** (F1 = 0.19, précision = 0.13 même après SMOTE modéré — seulement 52 exemples d'entraînement réels dans NSL-KDD). Politique de traitement manuel systématique en place, indépendamment du score affiché.
 - **Suricata ne distingue pas nativement un flood mono-port d'un scan multi-ports** (voir section 6) — désambiguïsation dépendante de la couche IA, elle-même non intégrée au flux live.
 - **Aucune automatisation SOAR** — toutes les actions de confinement documentées dans le playbook restent manuelles à ce stade du prototype.
@@ -127,6 +141,8 @@ Cette section liste les limites actuelles du système, identifiées par tests ri
 - **Aucune visibilité sur le contenu du trafic chiffré** au-delà des métadonnées (SNI, JA3, etc.) — limite structurelle de tout NIDS face au chiffrement.
 - **Dashboard sans authentification**, ouvert à tout le sous-réseau local (voir section 4).
 - **Pas de politique de rétention/purge des données** sur `alerts.jsonl`/`triage_log.json` — pertinent pour une future section conformité Loi 25 (Québec), activité principale d'AICYOU, non encore rédigée dans ce document.
+- **Extra Trees entraîné sur un sous-échantillon** (1 M de lignes sur 5 874 680) par contrainte de RAM de la VM (~2 Go utilisables). Ses métriques ne sont donc pas rigoureusement comparables à celles de XGBoost, entraîné sur le jeu complet ; le drapeau `subsampled` figure dans `netflow_training_report.json`.
+- **`pipeline/.env` déclare une adresse obsolète** — `MONITORED_HOST_IP=192.168.1.112` alors que la VM est passée à `192.168.1.249`. Les features `inbound_*` / `outbound_*` de `feature_extractor.py` sont calculées contre une adresse inactive et valent zéro sur tout trafic récent. Constaté le 06/09/2026, non corrigé.
 - **Latence pipeline bout-en-bout mesurée sur un seul run, échantillon de 200 alertes** — non une moyenne stabilisée sur plusieurs exécutions (voir `pipeline_latency_note` dans `data/validation_report.json`).
 
 ## 9. Décisions techniques notables
@@ -142,10 +158,15 @@ Cette section liste les limites actuelles du système, identifiées par tests ri
 | Ensemble XGBoost + Isolation Forest (logique OU) | XGBoost a un plafond de recall structurel sur les types d'attaque absents de l'entraînement ; Isolation Forest, non supervisé, ne partage pas cette limite |
 | Recommandations générées dynamiquement (`build_recommendation`) plutôt que table statique | Deux alertes de même bande/tactique peuvent avoir des recommandations différentes si leurs preuves sous-jacentes diffèrent (confiance, détecteur responsable) |
 | Contrat de schéma explicite (`feature_schema.py`) au lieu de laisser XGBoost échouer nativement | Transforme un crash cryptique (ou pire, une prédiction silencieuse sur coïncidence de nombre de colonnes) en diagnostic actionnable |
+| Porte de décision chiffrée et inscrite dans le code AVANT la mesure (`netflow_transfer_test.py`, `GATE_MIN_RECALL`) | Un critère fixé après coup s'ajuste au résultat obtenu. Inscrit dans le code, il rend l'arrêt vérifiable plutôt que discrétionnaire |
+| Adresses IP exclues de l'entrée des modèles NetFlow (`NETFLOW_V1_MODEL_COLUMNS`) | Les IP sont propres au plan d'adressage du banc d'essai ; un modèle qui les utilise mémorise ce réseau au lieu d'apprendre un comportement |
+| Vérité terrain live justifiée par des sources externes aux features (`auth.log`, journal de bord, nombre de ports distincts) | Étiqueter un flux « scan » parce qu'il porte le drapeau SYN seul rendrait circulaire le test du modèle censé apprendre ce signal |
+| Chaque constante dérivée d'un jeu de données est accompagnée de son vérificateur exécutable (`--verify-schema`, `--verify-l7`, `verify_parent_mapping`) | Une constante figée dérive silencieusement quand la source change ; un vérificateur transforme la dérive en échec visible |
 
 ## 10. Prochaines étapes
 
-- Fermer l'écart de schéma de features entre le pipeline live et le modèle ML (couche d'adaptation ou nouveau modèle entraîné sur schéma live) — priorité la plus élevée pour une véritable intégration bout-en-bout.
+- Fermer l'écart de schéma de features — priorité la plus élevée. La voie « modèle public entraîné sur un autre réseau » est mesurée et écartée (section 8). La voie restante est un modèle entraîné sur le trafic du réseau lui-même : les 19 209 flux réels étiquetés au schéma NetFlow v1 (`netflow_ground_truth.py`) la rendent possible, avec une validation croisée temporelle (entraînement sur les campagnes de juillet-août, test sur celle du 31/08). Réserve connue : 56 flux seulement pour la classe force brute.
+- Corriger `MONITORED_HOST_IP` dans `pipeline/.env`, et trancher si les features `inbound_*` / `outbound_*` de `feature_extractor.py` conservent une utilité.
 - Rédaction de la section conformité Loi 25 (Québec) — authentification dashboard, politique de rétention des données.
 - Guide d'installation (livrable attendu, non commencé).
 - Rapport technique final consolidant l'ensemble du journal technique.

@@ -470,3 +470,248 @@ synchronisés avec l'état réel du code et de l'infrastructure.
 | Démonstration fonctionnelle | ❌ Non préparée |
 
 **Prochaine session** : guide d'installation et/ou rapport technique final.
+
+---
+
+## 06/09/2026 — Voie NetFlow : porte de décision franchie par la négative
+
+### Objectif de la session
+
+Fermer l'écart de schéma identifié le 15/08 (voir `architecture.md`
+section 8) par la seule voie qui ne demande d'inventer aucune feature :
+produire depuis le trafic live un schéma **identique** à celui d'un jeu
+public étiqueté, pour qu'un modèle entraîné dessus s'applique directement,
+sans couche d'adaptation.
+
+Schéma retenu : NetFlow standard v1, 12 features (Sarhan, Layeghy,
+Moustafa, Portmann, *NetFlow Datasets for Machine Learning-Based Network
+Intrusion Detection Systems*, BDTA 2020). Jeu d'entraînement :
+NF-CSE-CIC-IDS2018 v1, 8 392 401 flux, 12,14 % d'attaques.
+
+Une **porte de décision** a été fixée AVANT toute mesure et inscrite dans
+le code (`netflow_transfer_test.py`, constante `GATE_MIN_RECALL`) pour
+qu'elle ne puisse pas être ajustée après coup : rappel binaire > 50 % sur
+les classes scan et DoS du trafic réel. Atteint → intégrer. Non atteint →
+arrêter et consigner comme constat de recherche.
+
+### Verdict : porte échouée
+
+**0 attaque détectée sur 10 440.** Rappel 0,0000 sur les trois classes
+(Reconnaissance, DoS, BruteForce) au seuil 0,5.
+
+Le résultat est plus fort qu'un simple défaut de généralisation :
+
+| Métrique (indépendante du seuil) | Valeur | Lecture |
+|---|---|---|
+| AUC-ROC global | **0,1604** | 0,5 = hasard ; **en dessous = anti-corrélation** |
+| AUC-ROC Reconnaissance | 0,1307 | |
+| AUC-ROC DoS | 0,3779 | |
+| AUC-ROC BruteForce | 0,3699 | |
+
+Le modèle n'est pas non-informatif : il attribue une probabilité
+d'attaque **plus basse** aux vraies attaques (moyennes 0,004 à 0,024)
+qu'au trafic bénin (moyenne 0,061). Il est systématiquement à l'envers
+sur ce domaine.
+
+### Deux hypothèses concurrentes écartées par la mesure
+
+Un zéro aussi net devait être attaqué avant d'être publié. Les deux
+alternatives ont été testées, pas raisonnées
+(`netflow_transfer_diagnostics.py`).
+
+**1. « C'est un bug de mon pipeline d'inférence. »** Écarté. Les mêmes
+modèle et chemin de code, appliqués à des flux du jeu **source** :
+
+| Classe source | Rappel | Probabilité moyenne |
+|---|---|---|
+| SSH-Bruteforce | 1,0000 | 1,0000 |
+| FTP-BruteForce | 1,0000 | 1,0000 |
+| DDoS attacks-LOIC-HTTP | 1,0000 | 1,0000 |
+| DoS attacks-Hulk | 1,0000 | 0,9997 |
+| DoS attacks-GoldenEye | 1,0000 | 0,9997 |
+| DoS attacks-Slowloris | 1,0000 | 0,9996 |
+| Benign (non alerté) | 1,0000 | 0,0775 |
+
+**2. « C'est un problème de seuil. »** Écarté. En descendant jusqu'à
+0,01, le rappel DoS remonte à 0,6942 — mais au prix de **52,8 % de faux
+positifs** sur le trafic bénin, moins bon qu'un tirage à pile ou face.
+Le rappel BruteForce reste à 0,0179. L'AUC, qui ne dépend d'aucun seuil,
+tranche définitivement.
+
+### Mécanisme mesuré
+
+Deux features portent **91 % de la décision** du modèle binaire :
+
+| Feature | Importance |
+|---|---|
+| OUT_PKTS | 0,6004 |
+| L4_DST_PORT | 0,3138 |
+| (huit autres) | 0,0858 au total |
+
+Ces deux features sont précisément celles qui ne transfèrent pas :
+
+- **Ports.** Les attaques du banc CIC se concentrent à ~90 % sur les
+  ports 53 (36,0 %), 80 (30,8 %), 443 (14,5 %) et 8080 (9,2 %). Nos
+  attaques réelles s'étalent sur **1000 ports** (scan nmap). 17 ports
+  communs seulement ; **16,0 %** des flux d'attaque live portent un port
+  déjà vu comme attaque à l'entraînement.
+- **OUT_PKTS.** Nos floods TCP complets (médiane 3) et notre force brute
+  SSH (médiane 11) ressemblent au trafic **bénin** du jeu source
+  (médiane 2), pas à ses attaques (médiane 1). Nos scans, eux, ont
+  OUT_PKTS = 0 à 97,5 % — un profil que le jeu source ne contient pas.
+
+Le modèle a appris le profil du banc d'essai CIC — quels ports y sont
+attaqués, avec quel volume de retour — et non un comportement d'attaque
+transférable. C'est exactement la limite que Sarhan et al. identifient
+eux-mêmes comme motivation d'un jeu de features standard : le schéma
+commun rend les jeux comparables, il ne rend pas les modèles portables.
+
+### Asymétrie de classes, constatée après coup
+
+NF-CSE-CIC-IDS2018 ne contient **aucune classe de reconnaissance ou de
+scan de ports**. Or 88 % de nos flux d'attaque réels sont des scans nmap.
+Même avec un transfert parfait, le modèle multi-classe n'aurait pas pu
+les étiqueter : la bonne réponse n'existe pas dans son vocabulaire. Ce
+point aurait dû être vérifié dans la distribution du jeu **avant** de
+lancer le chantier, pas découvert au moment d'écrire l'évaluation.
+
+### Deux défauts du jeu source, relevés au passage
+
+- `FLOW_DURATION_MILLISECONDS` sature à 4 294 967 ms, soit 2³²
+  microsecondes exprimées en millisecondes, sur **41,27 %** des flux :
+  débordement d'un compteur 32 bits côté nProbe. Sans effet sur nos
+  conclusions, le modèle n'utilisant presque pas cette feature
+  (importance 0,0016).
+- `DoS attacks-SlowHTTPTest` a un rappel de **0,0000 en domaine** : ses
+  31 665 échantillons de test sont *tous* prédits `FTP-BruteForce`, qui
+  affiche en miroir un rappel de 1,0000 pour une précision de 0,6468.
+  Les deux classes sont strictement indiscernables dans l'espace
+  NetFlow v1.
+
+### Bug de ma propre chaîne, détecté et corrigé avant conclusion
+
+`netflow_domain_shift.py` a révélé `L7_PROTO = 0` sur **100 %** du jeu
+live — impossible avec la table de correspondance. Cause :
+`live_flows_labelled.csv` avait été construit *avant* l'insertion de la
+table, donc avec un dictionnaire vide. Jeu reconstruit (61,5 % de zéros,
+contre 65,5 % côté source : alignement correct) et porte rejouée.
+**Verdict inchangé** — mais conclure sur un artefact de ma propre chaîne
+aurait invalidé tout le constat.
+
+Même nature d'erreur sur le test lui-même : il comparait les prédictions
+à `"DoS"` / `"BruteForce"`, alors que la colonne `Attack` du CSV contient
+**15 classes fines** (`DoS attacks-Hulk`, `SSH-Bruteforce`…) et non les 7
+catégories annoncées sur la page de publication. Le test aurait rendu 0 %
+d'exactitude multi-classe par pur artefact de nommage — et ce zéro serait
+allé dans le sens de l'hypothèse testée, donc n'aurait éveillé aucun
+soupçon. C'est le cas le plus dangereux : un faux résultat qui confirme
+ce qu'on attend.
+
+### Résultats en domaine (pour référence)
+
+Test sur 2 517 721 flux jamais vus. L'exactitude globale n'est jamais
+citée seule : 87,86 % du jeu est bénin.
+
+| Modèle | Résultat |
+|---|---|
+| XGBoost binaire | rappel attaques **0,9478**, précision 0,9932, FPR 0,0009 |
+| XGBoost multi-classe | macro-F1 0,6723 |
+| Extra Trees multi-classe | macro-F1 0,7211 |
+
+Extra Trees est entraîné sur 1 M de lignes (sous-échantillon stratifié)
+et non sur les 5 874 680 du jeu d'entraînement : contrainte de RAM de la
+VM (~2 Go utilisables). Les deux algorithmes ne sont donc pas
+rigoureusement comparables entre eux ; le drapeau `subsampled` figure
+dans `netflow_training_report.json`.
+
+**L'écart entre 0,9478 en domaine et 0,0000 hors domaine est le résultat
+de ce chantier.**
+
+### Conséquence
+
+Conformément au cadrage, l'étape d'intégration (`analysis_engine.py`,
+`dashboard.py`, correspondance MITRE) **n'est pas entamée**. Le cadrage
+NSL-KDD existant est conservé : il est validé sur son jeu et démontré sur
+la page « Moteur d'analyse ». La voie NetFlow est consignée comme
+résultat négatif mesuré, pas comme travail inachevé.
+
+Ce que le chantier laisse d'utilisable :
+
+- `flow_feature_extractor.py` produit les 12 features NetFlow v1 depuis
+  le trafic réel, avec deux contrats vérifiables (`--verify-schema`,
+  `--verify-l7`). Cet extracteur reste valide indépendamment du modèle :
+  il est le prérequis de toute reprise sur un jeu d'entraînement plus
+  proche du domaine.
+- `netflow_ground_truth.py` fournit 19 209 flux réels étiquetés
+  (9184 reconnaissance, 8769 bénins, 1200 DoS, 56 force brute), chacun
+  justifié par une source **externe** aux features — `auth.log` pour la
+  force brute, journal de bord pour les floods, nombre de ports distincts
+  pour les scans. Étiqueter un flux « scan » parce qu'il porte le drapeau
+  SYN seul aurait rendu le test circulaire.
+
+### Piste qu'ouvre ce résultat
+
+Le trafic étiqueté local existe désormais au schéma NetFlow v1. Un modèle
+entraîné **sur ce trafic** (validation croisée temporelle, entraînement
+sur les campagnes de juillet-août, test sur celle du 31/08) répondrait à
+une question différente et mieux posée que celle du transfert : non pas
+« un modèle CIC-2018 généralise-t-il ici ? » — mesuré, la réponse est non
+— mais « le comportement d'attaque de ce réseau est-il apprenable à
+partir de ses propres flux ? ». Les 56 flux de force brute resteront
+toutefois un échantillon trop mince pour cette classe.
+
+### Constat sur les 56 flux de force brute
+
+Le rappel BruteForce repose sur 56 flux seulement. C'est trop peu pour un
+intervalle de confiance utile, et ce chiffre ne doit pas être lu au même
+niveau que ceux du scan (9184 flux) ou du DoS (1200 flux). Il est
+rapporté parce qu'il va dans le même sens que les deux autres, pas parce
+qu'il est solide isolément.
+
+### Reproduire
+
+```bash
+cd pipeline
+./venv/bin/python flow_feature_extractor.py --verify-schema data/netflow/NF-CSE-CIC-IDS2018.csv
+./venv/bin/python flow_feature_extractor.py --verify-l7     data/netflow/NF-CSE-CIC-IDS2018.csv
+./venv/bin/python build_live_flow_dataset.py
+./venv/bin/python train_netflow_model.py --resume
+./venv/bin/python netflow_transfer_test.py          # code de sortie 2 = porte échouée
+./venv/bin/python netflow_transfer_diagnostics.py
+./venv/bin/python netflow_domain_shift.py
+```
+
+Jeu de données : `https://rdm.uq.edu.au/files/650f1fa0-ef9c-11ed-b5f6-b1a04f482c13`
+(accès ouvert). Intégrité vérifiée contre le manifeste BagIt fourni
+(`pipeline/data/netflow/manifest-sha1.txt`).
+
+### Constat annexe — `.env` obsolète
+
+La VM a changé d'adresse en cours de projet : `192.168.1.112` →
+`192.168.1.249` (confirmé par le fait que le scan du 28/07 vise .112 et
+celui du 31/08 vise .249). `pipeline/.env` déclare encore
+`MONITORED_HOST_IP=192.168.1.112`. Les features `inbound_*` / `outbound_*`
+de `feature_extractor.py` sont donc calculées contre une adresse
+inactive et valent zéro sur tout trafic récent. Constaté, non corrigé
+dans cette session — à traiter avec la question de savoir si ces features
+survivent à la décision ci-dessus.
+
+### État des livrables du cahier des charges au 06/09/2026
+
+| Livrable | Statut |
+|---|---|
+| Code source du prototype | ✅ Complet, poussé (main repo + fork wazuh-docker) |
+| Pipeline de collecte/traitement | ✅ Opérationnel, validé live |
+| Moteur de détection (signatures + comportemental) | ✅ Opérationnel, validé live (3 scénarios) |
+| Moteur de détection (IA) | ⚠️ Validé sur NSL-KDD, non intégré au live. Voie NetFlow testée le 06/09 et **écartée sur mesure** (rappel 0/10 440, AUC 0,1604) |
+| Module de priorisation des alertes | ✅ Opérationnel (`risk_scorer.py`), sur schéma NSL-KDD |
+| Module de correspondance MITRE ATT&CK | ⚠️ Live via règles, NSL-KDD-only via IA — statut inchangé |
+| Tableau de bord de visualisation | ✅ Opérationnel, 4 pages |
+| Guide d'installation | ✅ `docs/guide-installation.md` |
+| Rapport technique final | ❌ Non commencé (matière première complète dans ce journal) |
+| Démonstration fonctionnelle | ❌ Non préparée |
+
+Le statut de trois livrables est inchangé par cette session. C'est le
+résultat attendu d'une porte de décision honnête : elle n'améliore pas le
+prototype, elle établit qu'une voie envisagée ne l'améliorerait pas, et
+elle le documente avec les mesures qui le prouvent.
