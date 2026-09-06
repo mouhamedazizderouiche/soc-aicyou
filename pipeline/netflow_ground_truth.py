@@ -125,3 +125,92 @@ if __name__ == "__main__":
     print(f"{len(ATTACK_WINDOWS)} fenêtres d'attaque, {len(BENIGN_WINDOWS)} fenêtres bénignes.")
     from collections import Counter
     print("Classes d'attaque déclarées :", Counter(w[5] for w in ATTACK_WINDOWS))
+
+
+# --------------------------------------------------------------------------
+# Correspondance classes fines -> catégories parentes du jeu source
+# --------------------------------------------------------------------------
+# La colonne `Attack` de NF-CSE-CIC-IDS2018 contient 15 classes FINES
+# (« DoS attacks-Hulk », « SSH-Bruteforce »...), alors que la page de
+# publication du jeu décrit 7 catégories PARENTES. Les deux niveaux
+# coexistent et il faut les distinguer explicitement, sans quoi une
+# comparaison avec la vérité terrain locale (exprimée en catégories)
+# renvoie zéro par simple non-correspondance de chaînes, ce qui se lirait
+# à tort comme un échec de transfert.
+#
+# Correspondance NON devinée : chaque somme ci-dessous a été confrontée
+# aux effectifs publiés par les auteurs, et les six tombent exactement.
+#   BruteForce   193 360 + 94 237                     = 287 597
+#   DoS          108 136 + 105 550 + 32 850 + 22 825  = 269 361
+#   DDoS         378 199 +   1 667 +    230           = 380 096
+#   Web Attacks    2 613 +   1 745 +     36           =   4 394
+#   Bot / Infiltration : classes uniques, inchangées  =  15 683 / 62 072
+DATASET_PARENT_CATEGORY = {
+    "Benign": "Benign",
+    "FTP-BruteForce": "BruteForce",
+    "SSH-Bruteforce": "BruteForce",
+    "DoS attacks-Hulk": "DoS",
+    "DoS attacks-SlowHTTPTest": "DoS",
+    "DoS attacks-GoldenEye": "DoS",
+    "DoS attacks-Slowloris": "DoS",
+    "DDoS attacks-LOIC-HTTP": "DDoS",
+    "DDOS attack-LOIC-UDP": "DDoS",
+    "DDOS attack-HOIC": "DDoS",
+    "Brute Force -Web": "Web Attacks",
+    "Brute Force -XSS": "Web Attacks",
+    "SQL Injection": "Web Attacks",
+    "Bot": "Bot",
+    "Infilteration": "Infiltration",
+}
+
+# Effectifs publiés par les auteurs, conservés pour que
+# verify_parent_mapping() puisse revérifier la correspondance.
+PUBLISHED_PARENT_COUNTS = {
+    "Benign": 7373198, "BruteForce": 287597, "Bot": 15683,
+    "DoS": 269361, "DDoS": 380096, "Infiltration": 62072,
+    "Web Attacks": 4394,
+}
+
+
+def to_parent_category(fine_label: str) -> str:
+    """
+    Traduit une classe fine du jeu source en catégorie parente. Lève
+    KeyError sur une classe inconnue plutôt que de retourner un défaut :
+    une classe non répertoriée signifie que le jeu a changé, et un repli
+    silencieux fausserait toute évaluation en aval.
+    """
+    return DATASET_PARENT_CATEGORY[fine_label]
+
+
+def verify_parent_mapping(csv_path: str) -> bool:
+    """
+    Utilitaire de maintenance : recompte les classes fines du CSV, les
+    agrège par catégorie parente et confronte le résultat aux effectifs
+    publiés par les auteurs du jeu.
+    """
+    import pandas as pd
+    from collections import Counter
+
+    counts = Counter()
+    for chunk in pd.read_csv(csv_path, usecols=["Attack"], chunksize=2_000_000):
+        counts.update(chunk["Attack"].value_counts().to_dict())
+
+    unknown = sorted(set(counts) - set(DATASET_PARENT_CATEGORY))
+    if unknown:
+        print(f"Classes fines inconnues de la table : {unknown}")
+        return False
+
+    parents = Counter()
+    for fine, n in counts.items():
+        parents[DATASET_PARENT_CATEGORY[fine]] += n
+
+    print(f"{'catégorie':<14} {'recompté':>10} {'publié':>10}  verdict")
+    all_ok = True
+    for parent in sorted(PUBLISHED_PARENT_COUNTS):
+        got, expected = parents.get(parent, 0), PUBLISHED_PARENT_COUNTS[parent]
+        ok = got == expected
+        all_ok = all_ok and ok
+        print(f"{parent:<14} {got:>10} {expected:>10}  {'OK' if ok else 'ÉCART'}")
+    print("\nOK : la correspondance parente reproduit exactement les effectifs publiés."
+          if all_ok else "\nÉCART — ne pas utiliser DATASET_PARENT_CATEGORY en l'état.")
+    return all_ok

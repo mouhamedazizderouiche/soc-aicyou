@@ -25,6 +25,16 @@ de lignes, est entraîné sur la totalité du jeu d'entraînement. Les deux
 chiffres ne sont donc PAS strictement comparables entre eux : le
 sous-échantillonnage est signalé dans le rapport produit.
 
+REPRISE APRÈS INTERRUPTION
+--------------------------
+Le rapport JSON est réécrit après CHAQUE modèle, pas une seule fois à la
+fin, et --resume réutilise un modèle déjà présent sur disque au lieu de
+le réentraîner. Motivation concrète : cette VM a été interrompue deux
+fois en cours d'entraînement (redémarrage), perdant à chaque fois les
+métriques déjà calculées alors que les modèles, eux, étaient écrits.
+Les résultats restent identiques d'une reprise à l'autre : random_state
+est fixé et le découpage train/test en dépend seul.
+
 MÉTRIQUES
 ---------
 Le jeu est déséquilibré (87,86% bénin). L'exactitude globale n'est
@@ -112,6 +122,19 @@ def per_class_report(y_true, y_pred, labels, title: str) -> dict:
     return report
 
 
+def save_report(results: dict, path: str) -> None:
+    """
+    Écrit le rapport de façon atomique (fichier temporaire puis
+    remplacement) : une interruption pendant l'écriture laisse le rapport
+    précédent intact plutôt qu'un JSON tronqué.
+    """
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
+    logger.info("Rapport mis à jour : %s", path)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Entraîne les modèles NetFlow v1.")
     parser.add_argument("--csv", default=os.path.join(DATA_DIR, "NF-CSE-CIC-IDS2018.csv"))
@@ -121,7 +144,18 @@ def main():
                              "(contrainte RAM ; 0 = jeu complet)")
     parser.add_argument("--et-estimators", type=int, default=50)
     parser.add_argument("--xgb-estimators", type=int, default=200)
+    parser.add_argument("--n-jobs", type=int, default=4,
+                        help="parallélisme. Chaque worker Extra Trees duplique une "
+                             "part du jeu en mémoire. Sur cette VM (2,2 Go utilisables, "
+                             "8 cœurs), n_jobs=-1 a été mesuré à 58%% de la RAM totale "
+                             "et encore en hausse ; la marge était trop faible pour "
+                             "être fiable, d'où ce plafond à 4. Ce n'est pas un "
+                             "dépassement constaté, c'est une marge insuffisante.")
     parser.add_argument("--out-dir", default=DATA_DIR)
+    parser.add_argument("--resume", action="store_true",
+                        help="réutilise les modèles déjà présents sur disque "
+                             "au lieu de les réentraîner (les métriques sont "
+                             "recalculées dans tous les cas)")
     args = parser.parse_args()
 
     df = load_dataset(args.csv)
@@ -147,6 +181,7 @@ def main():
 
     results = {
         "dataset": os.path.basename(args.csv),
+        "n_jobs": args.n_jobs,
         "n_total": int(len(X_train) + len(X_test)),
         "n_train": int(len(X_train)),
         "n_test": int(len(X_test)),
@@ -156,6 +191,7 @@ def main():
         "models": {},
     }
     os.makedirs(args.out_dir, exist_ok=True)
+    report_path = os.path.join(args.out_dir, "netflow_training_report.json")
 
     # ---------------- Extra Trees (référence littérature) -------------
     if args.et_sample and args.et_sample < len(X_train):
@@ -171,14 +207,20 @@ def main():
     logger.info("Extra Trees : entraînement sur %d lignes (sous-échantillonné=%s)",
                 len(Xet), subsampled)
 
-    t0 = time.time()
-    et = ExtraTreesClassifier(
-        n_estimators=args.et_estimators, n_jobs=-1,
-        random_state=RANDOM_STATE, class_weight="balanced_subsample",
-    )
-    et.fit(Xet, yet)
-    et_time = time.time() - t0
-    logger.info("Extra Trees entraîné en %.1f s", et_time)
+    et_path = os.path.join(args.out_dir, "netflow_extratrees_multiclass.pkl")
+    if args.resume and os.path.exists(et_path):
+        logger.info("Reprise : Extra Trees rechargé depuis %s (pas de réentraînement)", et_path)
+        et = joblib.load(et_path)
+        et_time = None
+    else:
+        t0 = time.time()
+        et = ExtraTreesClassifier(
+            n_estimators=args.et_estimators, n_jobs=args.n_jobs,
+            random_state=RANDOM_STATE, class_weight="balanced_subsample",
+        )
+        et.fit(Xet, yet)
+        et_time = time.time() - t0
+        logger.info("Extra Trees entraîné en %.1f s", et_time)
 
     et_pred = et.predict(X_test)
     et_report = per_class_report(
@@ -190,28 +232,37 @@ def main():
         "n_train_used": int(len(Xet)),
         "subsampled": subsampled,
         "n_estimators": args.et_estimators,
-        "train_seconds": round(et_time, 1),
+        "train_seconds": round(et_time, 1) if et_time is not None else None,
+        "reloaded_from_disk": et_time is None,
         "per_class": {k: et_report[k] for k in class_names},
         "macro_avg": et_report["macro avg"],
         "accuracy": et_report["accuracy"],
     }
-    joblib.dump(et, os.path.join(args.out_dir, "netflow_extratrees_multiclass.pkl"),
-                compress=3)
+    if et_time is not None:
+        joblib.dump(et, et_path, compress=3)
     del et
+    save_report(results, report_path)
 
     # ---------------- XGBoost binaire (score de risque) ---------------
-    t0 = time.time()
-    xgb_bin = xgb.XGBClassifier(
-        n_estimators=args.xgb_estimators, max_depth=8, learning_rate=0.1,
-        tree_method="hist", n_jobs=-1, random_state=RANDOM_STATE,
-        eval_metric="logloss",
-        # Rééquilibrage : 87,86% de bénins, sans quoi le modèle optimise
-        # l'exactitude en ignorant la classe minoritaire.
-        scale_pos_weight=float((ybin_train == 0).sum() / max((ybin_train == 1).sum(), 1)),
-    )
-    xgb_bin.fit(X_train, ybin_train)
-    bin_time = time.time() - t0
-    logger.info("XGBoost binaire entraîné en %.1f s", bin_time)
+    bin_path = os.path.join(args.out_dir, "netflow_xgboost_binary.json")
+    xgb_bin = xgb.XGBClassifier()
+    if args.resume and os.path.exists(bin_path):
+        logger.info("Reprise : XGBoost binaire rechargé depuis %s", bin_path)
+        xgb_bin.load_model(bin_path)
+        bin_time = None
+    else:
+        t0 = time.time()
+        xgb_bin = xgb.XGBClassifier(
+            n_estimators=args.xgb_estimators, max_depth=8, learning_rate=0.1,
+            tree_method="hist", n_jobs=args.n_jobs, random_state=RANDOM_STATE,
+            eval_metric="logloss",
+            # Rééquilibrage : 87,86% de bénins, sans quoi le modèle optimise
+            # l'exactitude en ignorant la classe minoritaire.
+            scale_pos_weight=float((ybin_train == 0).sum() / max((ybin_train == 1).sum(), 1)),
+        )
+        xgb_bin.fit(X_train, ybin_train)
+        bin_time = time.time() - t0
+        logger.info("XGBoost binaire entraîné en %.1f s", bin_time)
 
     bin_pred = xgb_bin.predict(X_test)
     bin_report = per_class_report(ybin_test, bin_pred, ["Benign", "Attack"],
@@ -219,23 +270,33 @@ def main():
     results["models"]["xgboost_binary"] = {
         "n_train_used": int(len(X_train)),
         "n_estimators": args.xgb_estimators,
-        "train_seconds": round(bin_time, 1),
+        "train_seconds": round(bin_time, 1) if bin_time is not None else None,
+        "reloaded_from_disk": bin_time is None,
         "per_class": {k: bin_report[k] for k in ["Benign", "Attack"]},
         "accuracy": bin_report["accuracy"],
     }
-    xgb_bin.save_model(os.path.join(args.out_dir, "netflow_xgboost_binary.json"))
+    if bin_time is not None:
+        xgb_bin.save_model(bin_path)
     del xgb_bin
+    save_report(results, report_path)
 
     # ---------------- XGBoost multi-classe (tactique) -----------------
-    t0 = time.time()
-    xgb_mul = xgb.XGBClassifier(
-        n_estimators=args.xgb_estimators, max_depth=8, learning_rate=0.1,
-        tree_method="hist", n_jobs=-1, random_state=RANDOM_STATE,
-        objective="multi:softprob", num_class=len(class_names),
-    )
-    xgb_mul.fit(X_train, ymul_train)
-    mul_time = time.time() - t0
-    logger.info("XGBoost multi-classe entraîné en %.1f s", mul_time)
+    mul_path = os.path.join(args.out_dir, "netflow_xgboost_multiclass.json")
+    xgb_mul = xgb.XGBClassifier()
+    if args.resume and os.path.exists(mul_path):
+        logger.info("Reprise : XGBoost multi-classe rechargé depuis %s", mul_path)
+        xgb_mul.load_model(mul_path)
+        mul_time = None
+    else:
+        t0 = time.time()
+        xgb_mul = xgb.XGBClassifier(
+            n_estimators=args.xgb_estimators, max_depth=8, learning_rate=0.1,
+            tree_method="hist", n_jobs=args.n_jobs, random_state=RANDOM_STATE,
+            objective="multi:softprob", num_class=len(class_names),
+        )
+        xgb_mul.fit(X_train, ymul_train)
+        mul_time = time.time() - t0
+        logger.info("XGBoost multi-classe entraîné en %.1f s", mul_time)
 
     mul_pred = xgb_mul.predict(X_test)
     mul_report = per_class_report(ymul_test, mul_pred, class_names,
@@ -247,18 +308,17 @@ def main():
     results["models"]["xgboost_multiclass"] = {
         "n_train_used": int(len(X_train)),
         "n_estimators": args.xgb_estimators,
-        "train_seconds": round(mul_time, 1),
+        "train_seconds": round(mul_time, 1) if mul_time is not None else None,
+        "reloaded_from_disk": mul_time is None,
         "per_class": {k: mul_report[k] for k in class_names},
         "macro_avg": mul_report["macro avg"],
         "accuracy": mul_report["accuracy"],
         "confusion_matrix": cm.tolist(),
     }
-    xgb_mul.save_model(os.path.join(args.out_dir, "netflow_xgboost_multiclass.json"))
+    if mul_time is not None:
+        xgb_mul.save_model(mul_path)
     joblib.dump(attack_encoder, os.path.join(args.out_dir, "netflow_label_encoder.pkl"))
-
-    report_path = os.path.join(args.out_dir, "netflow_training_report.json")
-    with open(report_path, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2, ensure_ascii=False)
+    save_report(results, report_path)
     print(f"\nRapport écrit : {report_path}")
     print(f"Modèles écrits dans : {args.out_dir}")
 
