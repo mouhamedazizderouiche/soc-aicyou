@@ -6,8 +6,20 @@ AUC, importance des features, et recouvrement des ports d'attaque entre
 les deux domaines.
 
 Écrit après que netflow_transfer_test.py a rendu un rappel nul sur les
-trois classes d'attaque. Un zéro aussi net appelle deux questions qu'on
+trois classes d'attaque. Un zéro aussi net appelle trois questions qu'on
 ne peut pas laisser ouvertes avant de conclure :
+
+  0. Un AUC de 0,16 est-il une INVERSION DE POLARITÉ d'étiquettes plutôt
+     qu'un échec de généralisation ? L'aléatoire donne 0,50 ; 0,16
+     retourné vaut 0,84, ce qui ressemble à un modèle correct dont les
+     étiquettes auraient été permutées.
+     -> polarity_check() tranche. Une inversion de polarité est une
+        propriété GLOBALE du code d'étiquetage et de scoring : elle
+        affecterait identiquement le domaine source et le domaine local.
+        Il suffit donc de mesurer l'AUC sur le jeu de test SOURCE par le
+        même chemin de code. Élevée => l'orientation est correcte de bout
+        en bout et l'anti-corrélation locale est réelle. Basse aussi =>
+        bug de polarité.
   1. Est-ce un bug de mon pipeline d'inférence, ou un vrai résultat ?
      -> control_source_domain() fait passer des données du jeu SOURCE par
         le même chemin de code. Si le rappel y est élevé, le chemin est
@@ -32,6 +44,145 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "net
 CONTROL_CLASSES = ["SSH-Bruteforce", "DoS attacks-Hulk", "DoS attacks-GoldenEye",
                    "DoS attacks-Slowloris", "DDoS attacks-LOIC-HTTP",
                    "FTP-BruteForce", "Benign"]
+
+
+def polarity_check(model, live: pd.DataFrame, csv_path: str) -> dict:
+    """
+    Tranche l'hypothèse « AUC 0,16 = inversion de polarité d'étiquettes ».
+
+    Vérifie explicitement les trois conventions (source, locale, modèle),
+    puis mesure l'AUC sur le jeu de test SOURCE avec le même chemin de
+    code que sur le trafic local. Le raisonnement discriminant : une
+    inversion de polarité retournerait les DEUX domaines ensemble.
+    """
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import LabelEncoder
+
+    print("=== POLARITÉ — conventions d'étiquettes ===")
+    src_label_map = collections.defaultdict(set)
+    for chunk in pd.read_csv(csv_path, usecols=["Label", "Attack"], chunksize=2_000_000):
+        for label, attack in chunk.groupby(["Label", "Attack"], observed=True).size().index:
+            src_label_map[int(label)].add(str(attack))
+    src_ok = src_label_map[0] == {"Benign"} and "Benign" not in src_label_map[1]
+    print(f"  source  : Label=0 -> {sorted(src_label_map[0])} ; "
+          f"Label=1 -> {len(src_label_map[1])} classes d'attaque   "
+          f"{'[0=bénin, 1=attaque]' if src_ok else '[CONVENTION INATTENDUE]'}")
+
+    live_0 = set(live[live["Label"] == 0]["Attack"].unique())
+    live_1 = set(live[live["Label"] == 1]["Attack"].unique())
+    live_ok = live_0 == {"Benign"} and "Benign" not in live_1
+    print(f"  locale  : Label=0 -> {sorted(live_0)} ; Label=1 -> {sorted(live_1)}   "
+          f"{'[0=bénin, 1=attaque]' if live_ok else '[CONVENTION INATTENDUE]'}")
+    print(f"  modèle  : classes_={model.classes_} -> predict_proba[:,1] = "
+          f"P(classe {model.classes_[1]})")
+
+    # AUC sur le jeu de test source, même découpage qu'à l'entraînement.
+    usecols = NETFLOW_V1_MODEL_COLUMNS + ["Label", "Attack"]
+    dtypes = {"L4_SRC_PORT": "int32", "L4_DST_PORT": "int32", "PROTOCOL": "int16",
+              "L7_PROTO": "float32", "IN_BYTES": "int64", "OUT_BYTES": "int64",
+              "IN_PKTS": "int32", "OUT_PKTS": "int32", "TCP_FLAGS": "int32",
+              "FLOW_DURATION_MILLISECONDS": "int64", "Label": "int8", "Attack": "category"}
+    df = pd.read_csv(csv_path, usecols=usecols, dtype=dtypes)
+    y_multi = LabelEncoder().fit_transform(df["Attack"].astype(str))
+    _, X_test, _, y_test, _, _ = train_test_split(
+        df[NETFLOW_V1_MODEL_COLUMNS], df["Label"].to_numpy(), y_multi,
+        test_size=0.3, random_state=42, stratify=y_multi)
+    del df
+    proba_src = model.predict_proba(X_test)[:, 1]
+    auc_src = float(roc_auc_score(y_test, proba_src))
+
+    proba_live = model.predict_proba(live[NETFLOW_V1_MODEL_COLUMNS])[:, 1]
+    auc_live = float(roc_auc_score(live["Label"].to_numpy(), proba_live))
+
+    print("\n=== POLARITÉ — test discriminant ===")
+    print(f"  AUC-ROC domaine SOURCE (test, n={len(y_test)}) : {auc_src:.4f}")
+    print(f"  AUC-ROC domaine LOCAL  (n={len(live)})            : {auc_live:.4f}")
+    print(f"  AUC-ROC local si polarité inversée                : {1 - auc_live:.4f}")
+    is_polarity_bug = auc_src < 0.5
+    if is_polarity_bug:
+        print("  => les DEUX domaines sont sous 0,5 : BUG DE POLARITÉ.")
+    else:
+        print("  => le domaine source est correctement orienté, le local ne l'est pas.")
+        print("     Une inversion de polarité les retournerait ENSEMBLE.")
+        print("     => PAS un bug de polarité ; l'anti-corrélation est propre au domaine local.")
+
+    return {"source_convention_ok": bool(src_ok), "live_convention_ok": bool(live_ok),
+            "model_classes": [int(c) for c in model.classes_],
+            "auc_source_test": auc_src, "auc_live": auc_live,
+            "auc_live_inverted": 1 - auc_live, "is_polarity_bug": bool(is_polarity_bug)}
+
+
+def anticorrelation_mechanism(model, live: pd.DataFrame, csv_path: str,
+                               top_n_ports: int = 10) -> dict:
+    """
+    Explique pourquoi l'AUC tombe SOUS 0,5 au lieu de tourner autour.
+    Une anti-corrélation systématique demande une cause systématique.
+
+    Deux mesures : (a) le trafic bénin local occupe-t-il les ports où le
+    jeu source place ses attaques ? (b) neutraliser une feature ramène-t-elle
+    l'AUC vers le hasard, désignant celle qui porte l'inversion ?
+    """
+    buckets = collections.defaultdict(list)
+    for chunk in pd.read_csv(csv_path, usecols=NETFLOW_V1_MODEL_COLUMNS + ["Label"],
+                              chunksize=500_000):
+        for lab in (0, 1):
+            group = chunk[chunk["Label"] == lab]
+            if len(group) and sum(len(d) for d in buckets[lab]) < 60000:
+                buckets[lab].append(group.head(6000))
+        if all(sum(len(d) for d in buckets[l]) >= 60000 for l in (0, 1)):
+            break
+    src = pd.concat([pd.concat(v) for v in buckets.values()], ignore_index=True)
+    attack_ports = set(src[src["Label"] == 1]["L4_DST_PORT"].value_counts()
+                       .head(top_n_ports).index)
+
+    X = live[NETFLOW_V1_MODEL_COLUMNS]
+    proba = model.predict_proba(X)[:, 1]
+    on_attack_port = live["L4_DST_PORT"].isin(attack_ports)
+    y = live["Label"].to_numpy()
+
+    print(f"\n=== Mécanisme de l'anti-corrélation ===")
+    print(f"  Ports portant les attaques du jeu source (top {top_n_ports}) : "
+          f"{sorted(attack_ports)}")
+    print(f"  {'classe locale':<18} {'n':>6} {'% sur port-attaque CIC':>24} {'score moyen':>13}")
+    per_class = {}
+    for cls in ["Benign", "Reconnaissance", "DoS", "BruteForce"]:
+        mask = (live["Attack"] == cls).to_numpy()
+        if not mask.any():
+            continue
+        share = float(on_attack_port.to_numpy()[mask].mean())
+        per_class[cls] = {"n": int(mask.sum()), "share_on_cic_attack_port": share,
+                          "mean_score": float(proba[mask].mean())}
+        print(f"  {cls:<18} {int(mask.sum()):>6} {share * 100:>23.1f}% "
+              f"{proba[mask].mean():>13.4f}")
+
+    print("\n  Score moyen selon le SEUL critère « port vu en attaque côté CIC » :")
+    port_effect = {}
+    for flag in (True, False):
+        mask = (on_attack_port == flag).to_numpy()
+        port_effect[str(flag)] = {"n": int(mask.sum()),
+                                  "mean_score": float(proba[mask].mean()),
+                                  "true_attack_share": float(y[mask].mean())}
+        print(f"    port-attaque CIC = {'OUI' if flag else 'NON':<4} n={int(mask.sum()):>6}  "
+              f"score moyen={proba[mask].mean():.4f}  "
+              f"dont réellement attaque : {y[mask].mean() * 100:.1f}%")
+
+    print("\n  Ablation — AUC en neutralisant une feature :")
+    ablation = {"aucune": float(roc_auc_score(y, proba))}
+    print(f"    {'aucune (tel quel)':<34} {ablation['aucune']:.4f}")
+    for cols, name in [(["L4_DST_PORT"], "L4_DST_PORT := 0"),
+                       (["OUT_PKTS"], "OUT_PKTS := 0"),
+                       (["L4_DST_PORT", "OUT_PKTS"], "les deux := 0")]:
+        Xa = X.copy()
+        for c in cols:
+            Xa[c] = 0
+        value = float(roc_auc_score(y, model.predict_proba(Xa)[:, 1]))
+        ablation[name] = value
+        print(f"    {name:<34} {value:.4f}")
+    print("  Une ablation qui ramène l'AUC vers 0,50 désigne la feature qui porte")
+    print("  l'inversion : sans elle le modèle devient non-informatif, pas correct.")
+
+    return {"cic_attack_ports": sorted(attack_ports), "per_class": per_class,
+            "port_effect": port_effect, "ablation_auc": ablation}
 
 
 def _sample_source(csv_path: str, classes: list, per_class: int) -> pd.DataFrame:
@@ -140,6 +291,8 @@ def main():
     model = xgb.XGBClassifier()
     model.load_model(os.path.join(args.model_dir, "netflow_xgboost_binary.json"))
 
+    polarity = polarity_check(model, live, args.train_csv)
+    print()
     control = control_source_domain(model, args.train_csv)
 
     proba = model.predict_proba(live[NETFLOW_V1_MODEL_COLUMNS])[:, 1]
@@ -168,8 +321,11 @@ def main():
         print(f"  {k:<30} {v:.4f}")
 
     overlap = port_overlap(live, args.train_csv)
+    mechanism = anticorrelation_mechanism(model, live, args.train_csv)
 
     report = {
+        "polarity_check": polarity,
+        "anticorrelation_mechanism": mechanism,
         "control_source_domain": control,
         "threshold_sweep": sweep,
         "auc_roc": auc, "auc_pr": ap, "positive_rate": float(y.mean()),

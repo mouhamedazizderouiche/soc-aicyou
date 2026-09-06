@@ -1,4 +1,70 @@
 {
+  "polarity_check": {
+    "source_convention_ok": true,
+    "live_convention_ok": true,
+    "model_classes": [
+      0,
+      1
+    ],
+    "auc_source_test": 0.991302315420019,
+    "auc_live": 0.16035876557482842,
+    "auc_live_inverted": 0.8396412344251716,
+    "is_polarity_bug": false
+  },
+  "anticorrelation_mechanism": {
+    "cic_attack_ports": [
+      21,
+      53,
+      80,
+      123,
+      135,
+      443,
+      445,
+      500,
+      3389,
+      8080
+    ],
+    "per_class": {
+      "Benign": {
+        "n": 8769,
+        "share_on_cic_attack_port": 0.8572243129205155,
+        "mean_score": 0.06102147325873375
+      },
+      "Reconnaissance": {
+        "n": 9184,
+        "share_on_cic_attack_port": 0.03288327526132404,
+        "mean_score": 0.009417622350156307
+      },
+      "DoS": {
+        "n": 1200,
+        "share_on_cic_attack_port": 0.0,
+        "mean_score": 0.023456791415810585
+      },
+      "BruteForce": {
+        "n": 56,
+        "share_on_cic_attack_port": 0.0,
+        "mean_score": 0.004372029099613428
+      }
+    },
+    "port_effect": {
+      "True": {
+        "n": 7819,
+        "mean_score": 0.07267778366804123,
+        "true_attack_share": 0.03862386494436629
+      },
+      "False": {
+        "n": 11390,
+        "mean_score": 0.007174200378358364,
+        "true_attack_share": 0.8900790166812994
+      }
+    },
+    "ablation_auc": {
+      "aucune": 0.16035876557482842,
+      "L4_DST_PORT := 0": 0.16641223283519224,
+      "OUT_PKTS := 0": 0.4680151452194228,
+      "les deux := 0": 0.15684948370456886
+    }
+  },
   "control_source_domain": {
     "Benign": {
       "n": 2000,
