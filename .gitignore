@@ -12,6 +12,11 @@ pipeline/data/netflow/*
 !pipeline/data/netflow/netflow_transfer_diagnostics.json
 !pipeline/data/netflow/manifest-sha1.txt
 .env
+# Toute variante de .env : la règle « .env » seule ne matche que le nom
+# exact, or une sauvegarde type .env.bak-20260906 contient les mêmes
+# secrets et n'était PAS ignorée (vérifié avec git check-ignore).
+.env.*
+!.env.example
 *.key
 *.pem
 certs/
