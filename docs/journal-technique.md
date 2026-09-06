@@ -323,7 +323,7 @@ par le dashboard au lieu d'être codées en dur.
 
 Découverte en tentant de valider le scénario DoS sur le pipeline réel :
 `RiskScorer.assess()` plantait avec une erreur XGBoost cryptique sur les
-features live (`feature_extractor.py`, 14 colonnes agrégées par fenêtre :
+features live (`feature_extractor.py`, 14 caractéristiques numériques agrégées par fenêtre — dont 11 seulement exploitables, voir l'entrée du 06/09/2026 :
 `event_count`, `unique_dest_ports`, etc.) contre le schéma NSL-KDD attendu
 (41 colonnes détaillées par session : `src_bytes`, `num_failed_logins`,
 `dst_host_serror_rate`, etc.). Aucun recouvrement de nom, deux espaces de
@@ -745,3 +745,124 @@ Le statut de trois livrables est inchangé par cette session. C'est le
 résultat attendu d'une porte de décision honnête : elle n'améliore pas le
 prototype, elle établit qu'une voie envisagée ne l'améliorerait pas, et
 elle le documente avec les mesures qui le prouvent.
+
+---
+
+## 06/09/2026 (suite) — L'AUC 0,16 mis en doute, puis confirmé ; et une cause racine unique
+
+### 1. L'AUC 0,16 est-il une inversion de polarité ?
+
+**Objection soulevée en revue, et elle était sérieuse.** Un AUC de 0,16
+n'est pas un échec aléatoire — l'aléatoire donne 0,50. Retourné, 0,16
+vaut 0,84 : le profil d'un modèle correct dont on aurait permuté les
+étiquettes. Si c'était le cas, la voie NetFlow n'était pas morte et la
+conclusion de la session précédente était à jeter.
+
+**Test discriminant.** Une inversion de polarité est une propriété
+*globale* du code d'étiquetage et de scoring : elle retournerait les deux
+domaines **ensemble**. Il suffit donc de mesurer l'AUC sur le jeu de test
+source par le même chemin de code.
+
+Conventions vérifiées explicitement, les trois coïncident :
+
+| Côté | Convention constatée |
+|---|---|
+| Source NF-CSE-CIC-IDS2018 | `Label=0` → `{Benign}` ; `Label=1` → 14 classes d'attaque |
+| Vérité terrain locale | `Label=0` → `{Benign}` ; `Label=1` → `{BruteForce, DoS, Reconnaissance}` |
+| Modèle XGBoost | `classes_=[0 1]`, donc `predict_proba[:,1] = P(attaque)` |
+
+| Domaine | AUC-ROC |
+|---|---|
+| **Source** (test tenu à l'écart, n = 2 517 721) | **0,9913** |
+| **Local** (n = 19 209) | **0,1604** |
+| Local si polarité inversée | 0,8396 |
+
+**Verdict : ce n'est pas un bug de polarité.** À 0,9913 côté source avec
+le même code, la même convention et le même modèle, l'orientation est
+correcte de bout en bout. La conclusion précédente tient : l'échec de
+transfert est réel. Test rejouable via
+`netflow_transfer_diagnostics.py::polarity_check()`.
+
+### 2. Pourquoi *sous* 0,5 et non autour ?
+
+Une anti-corrélation régulière demande une cause régulière. Elle est
+mesurable.
+
+Les attaques du jeu source se concentrent sur les ports 21, 53, 80, 123,
+135, 443, 445, 500, 3389, 8080 — c'est-à-dire les ports de service
+ordinaires. Or c'est là que vit notre trafic **bénin** :
+
+| Classe locale | n | % sur un port-attaque CIC | Score moyen |
+|---|---|---|---|
+| Benign | 8769 | **85,7 %** | 0,0610 |
+| Reconnaissance | 9184 | 3,3 % | 0,0094 |
+| DoS | 1200 | 0,0 % | 0,0235 |
+| BruteForce | 56 | 0,0 % | 0,0044 |
+
+Sur ces ports : score moyen 0,0727 pour **3,9 %** d'attaques réelles.
+Hors de ces ports : score moyen 0,0072 pour **89,0 %** d'attaques
+réelles. L'*a priori* appris est exactement à l'envers de la réalité de
+ce réseau — d'où une inversion régulière plutôt que du bruit.
+
+**Ablation.** Neutraliser `OUT_PKTS` ramène l'AUC de 0,1604 à **0,4680**,
+soit le hasard : c'est cette caractéristique qui porte l'inversion.
+Neutraliser `L4_DST_PORT` seul ne change presque rien (0,1664). Une
+ablation qui ramène vers 0,50 — et non vers 0,84 — confirme une dernière
+fois qu'il n'y a pas de signal correct caché sous une permutation
+d'étiquettes.
+
+### 3. Cause racine unique : le pipeline lit des *alertes*, pas des *flux*
+
+Trois défauts jusqu'ici consignés séparément n'en font qu'un.
+
+**Constat A — les caractéristiques `inbound_*` sont structurellement
+mortes.** Mesuré sur 10 627 alertes / 315 fenêtres d'une minute :
+
+| Caractéristique | Fenêtres non nulles | Max | Total |
+|---|---|---|---|
+| `inbound_event_count` | **0 / 315** | 0 | 0 |
+| `inbound_unique_src_ips` | **0 / 315** | 0 | 0 |
+| `inbound_unique_ports` | **0 / 315** | 0 | 0 |
+| `outbound_event_count` | 131 / 315 | 243 | 4693 |
+| `outbound_unique_ports` | 131 / 315 | 24 | 563 |
+
+`feature_extractor.py` produit 16 colonnes, dont 2 identifiants et 14
+caractéristiques numériques. Trois étant toujours nulles, **le jeu
+effectif compte 11 variables utiles, non 14**. La distinction
+entrant/sortant, présentée comme un point de conception dans l'entrée du
+29/07, ne fonctionne pas en pratique. Les mentions de « 14 colonnes »
+dans `architecture.md` et dans ce journal ont été corrigées.
+
+**Constat B — la collecte est manuelle et non continue.** `collector.py`
+tire 500 alertes par exécution ; ce n'est pas un service. Son checkpoint
+est resté figé au 29/07 pendant 39 jours. Couverture réelle du fichier au
+06/09 : 10 627 alertes du 23/07 au 14/08.
+
+**Le retard n'est pas rattrapé, délibérément.** La période 29/07–15/08
+est dominée à **87,5 %** par du bruit QUIC — 9297 alertes « SURICATA QUIC
+failed decrypt » sur 10 627 — précisément la nuisance supprimée à la
+source le 15/08 (commit `82a88c4`). Rattraper gonflerait le volume sans
+ajouter de signal. La couverture est documentée telle qu'elle est.
+
+**La convergence.** Ces deux constats et l'écart de schéma NSL-KDD ont la
+même cause : la chaîne `collector.py` → `normalizer.py` →
+`feature_extractor.py` s'alimente à l'index `wazuh-alerts-*`, et Wazuh
+n'indexe que les événements Suricata de type `alert`. Tout ce qui n'a
+déclenché aucune règle est invisible en aval, quelle que soit la qualité
+du code de caractéristiques.
+
+L'information entrante n'est pas absente du système — elle est hors
+d'atteinte par ce chemin. **8684 flux TCP entrants** vers la machine
+surveillée sont présents dans `eve.json` sur la seule fenêtre du scan du
+31/08 (23:45–23:49), sous `event_type: flow`. Aucun n'atteint le
+pipeline, car aucun n'est un événement `alert`.
+
+Ce n'est donc pas un manque de données mais un manque de **chemin** vers
+les données. Ce qui désigne le correctif : brancher la collecte sur
+`eve.json` plutôt que sur l'index d'alertes — exactement ce que fait
+`flow_feature_extractor.py`, qui reste valide indépendamment de l'échec
+du transfert inter-domaine mesuré plus haut.
+
+Formulé autrement : l'échec de la voie NetFlow porte sur le *modèle*
+(entraîné sur un autre réseau), pas sur l'*extracteur*. La partie du
+chantier qui adresse la cause racine tient toujours.
