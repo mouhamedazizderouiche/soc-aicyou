@@ -25,7 +25,7 @@ from flow_feature_extractor import (
     iter_flow_events,
     validate_netflow_v1_schema,
 )
-from netflow_ground_truth import label_flow
+from netflow_ground_truth import label_and_campaign
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("build_live_flow_dataset")
@@ -43,10 +43,10 @@ def build(eve_path: str) -> tuple:
     conventions de nommage de NF-CSE-CIC-IDS2018.
     """
     stats = ExtractionStats()
-    rows, labels = [], []
+    rows, labels, campaigns = [], [], []
 
     for event in iter_flow_events(eve_path):
-        truth = label_flow(event)
+        truth, campaign = label_and_campaign(event)
         if truth is None:
             continue  # hors de toute fenêtre de vérité terrain
         stats.seen += 1
@@ -55,12 +55,16 @@ def build(eve_path: str) -> tuple:
             continue
         rows.append(features)
         labels.append(truth)
+        campaigns.append(campaign)
 
     df = pd.DataFrame(rows, columns=NETFLOW_V1_COLUMNS)
     validate_netflow_v1_schema(df, context="build_live_flow_dataset")
 
     df["Attack"] = labels
     df["Label"] = (df["Attack"] != "Benign").astype(int)
+    # Identifiant de campagne : groupe pour la validation croisée sans fuite
+    # (train_local_flow_model.py). Des flux d'une même campagne sont corrélés.
+    df["campaign"] = campaigns
     return df, stats
 
 
@@ -82,6 +86,10 @@ if __name__ == "__main__":
     print("Distribution des classes de vérité terrain :")
     for cls, count in df["Attack"].value_counts().items():
         print(f"  {cls:<16} {count:6d}  ({count / len(df):.1%})")
+    print("\nCampagnes par classe (groupes de validation croisée) :")
+    for cls in sorted(df["Attack"].unique()):
+        n_camp = df.loc[df["Attack"] == cls, "campaign"].nunique()
+        print(f"  {cls:<16} {n_camp} campagne(s)")
     print(f"\nTotal : {len(df)} flux étiquetés "
           f"({df['Label'].sum()} attaques / {(df['Label'] == 0).sum()} bénins)")
 

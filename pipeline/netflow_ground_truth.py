@@ -91,6 +91,48 @@ BENIGN_WINDOWS = [
 ]
 
 
+def _attack_campaign_id(lo: str, w_src: str, label: str) -> str:
+    """
+    Identifiant de CAMPAGNE d'un flux d'attaque, à la granularité
+    (classe, attaquant, jour). Les fenêtres d'une même session découpée en
+    plusieurs bornes -- ex. les deux fenêtres de force brute du 04/08 --
+    portent ainsi le même identifiant. C'est cette granularité qui sert de
+    groupe pour la validation croisée sans fuite (train_local_flow_model.py) :
+    des flux d'une même campagne sont fortement corrélés et ne doivent
+    jamais se retrouver des deux côtés d'un pli.
+    """
+    return f"{label}:{w_src}:{lo[:10]}"
+
+
+def label_and_campaign(event: dict):
+    """
+    Comme label_flow, mais retourne (classe, campaign_id). Retourne
+    (None, None) si le flux n'est couvert par aucune fenêtre. Pour un flux
+    bénin, campaign_id = "Benign:<date de la fenêtre bénigne>".
+    """
+    ts = event.get("timestamp", "")
+    src = event.get("src_ip")
+    dst = event.get("dest_ip")
+    dport = event.get("dest_port")
+
+    for lo, hi, w_src, w_dst, w_port, label in ATTACK_WINDOWS:
+        if not (lo <= ts < hi):
+            continue
+        if src != w_src or dst != w_dst:
+            continue
+        if w_port is not None and dport != w_port:
+            continue
+        return label, _attack_campaign_id(lo, w_src, label)
+
+    for lo, hi in BENIGN_WINDOWS:
+        if lo <= ts < hi:
+            if src in ATTACKER_IPS or dst in ATTACKER_IPS:
+                return None, None
+            return "Benign", f"Benign:{lo[:10]}"
+
+    return None, None
+
+
 def label_flow(event: dict) -> str:
     """
     Retourne la classe de vérité terrain d'un enregistrement `flow`
