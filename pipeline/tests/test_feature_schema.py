@@ -137,3 +137,59 @@ def test_aucun_recouvrement_entre_les_deux_schemas():
     toute conversion implicite de l'un vers l'autre.
     """
     assert set(NSL_KDD_FEATURE_COLUMNS) & set(LIVE_PIPELINE_FEATURE_COLUMNS) == set()
+
+
+# --- Ajout 07/09/2026 : schéma des flux locaux (troisième schéma) -----------
+
+from feature_schema import (  # noqa: E402
+    LOCAL_FLOW_FEATURE_COLUMNS,
+    identify_schema,
+    validate_local_flow_schema,
+    verify_local_flow_against_extractor,
+)
+
+
+def make_local_flow_frame(n_rows: int = 3) -> pd.DataFrame:
+    return pd.DataFrame(
+        {col: [0] * n_rows for col in LOCAL_FLOW_FEATURE_COLUMNS},
+        columns=LOCAL_FLOW_FEATURE_COLUMNS,
+    )
+
+
+class TestSchemaFluxLocaux:
+    def test_schema_flux_local_valide_accepte(self):
+        validate_local_flow_schema(make_local_flow_frame(), context="test")
+
+    def test_dix_colonnes_ip_exclues(self):
+        """Les adresses IP ne doivent JAMAIS être dans l'entrée modèle."""
+        assert len(LOCAL_FLOW_FEATURE_COLUMNS) == 10
+        assert "IPV4_SRC_ADDR" not in LOCAL_FLOW_FEATURE_COLUMNS
+        assert "IPV4_DST_ADDR" not in LOCAL_FLOW_FEATURE_COLUMNS
+
+    def test_reste_aligne_sur_l_extracteur(self):
+        assert verify_local_flow_against_extractor() is True
+
+    def test_nsl_kdd_fourni_est_rejete_et_identifie(self):
+        with pytest.raises(FeatureSchemaError) as exc:
+            validate_local_flow_schema(make_nsl_kdd_frame(), context="test")
+        assert "NSL-KDD" in str(exc.value)
+
+    def test_agregats_fournis_sont_rejetes_et_identifies(self):
+        with pytest.raises(FeatureSchemaError) as exc:
+            validate_local_flow_schema(make_live_frame(), context="test")
+        assert "agrégats d'alertes" in str(exc.value)
+
+
+class TestIdentificationDesTroisSchemas:
+    def test_identifie_local_flow(self):
+        assert identify_schema(make_local_flow_frame()) == "local_flow"
+
+    def test_identifie_nsl_kdd(self):
+        assert identify_schema(make_nsl_kdd_frame()) == "nsl_kdd"
+
+    def test_identifie_agregats(self):
+        assert identify_schema(make_live_frame()) == "alert_aggregate"
+
+    def test_schema_etranger_est_inconnu(self):
+        frame = pd.DataFrame({"a": [1], "b": [2]})
+        assert identify_schema(frame) == "inconnu"
