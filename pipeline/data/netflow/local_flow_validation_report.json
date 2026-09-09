@@ -1,0 +1,222 @@
+{
+  "generated_at": "2026-09-09T03:20:06.799308+00:00",
+  "model": "local_flow_netflow_v1",
+  "features": [
+    "L4_SRC_PORT",
+    "L4_DST_PORT",
+    "PROTOCOL",
+    "L7_PROTO",
+    "IN_BYTES",
+    "OUT_BYTES",
+    "IN_PKTS",
+    "OUT_PKTS",
+    "TCP_FLAGS",
+    "FLOW_DURATION_MILLISECONDS"
+  ],
+  "n_flows": 19209,
+  "class_distribution": {
+    "Reconnaissance": 9184,
+    "Benign": 8769,
+    "DoS": 1200,
+    "BruteForce": 56
+  },
+  "campaigns_per_class": {
+    "Benign": 4,
+    "BruteForce": 2,
+    "DoS": 3,
+    "Reconnaissance": 2
+  },
+  "multiclass_classes": [
+    "Benign",
+    "Reconnaissance",
+    "Impact",
+    "InitialAccess_CredentialAccess"
+  ],
+  "tactic_mitre_ids": {
+    "Reconnaissance": "TA0043",
+    "Impact": "TA0040",
+    "InitialAccess_CredentialAccess": "TA0001/TA0006"
+  },
+  "privilege_escalation": "hors périmètre : aucune règle ni vérité terrain locale",
+  "cross_validation": {
+    "grouped": {
+      "method": "StratifiedGroupKFold",
+      "k": 2,
+      "group": "campaign",
+      "leakage_safe": true,
+      "note": "mesure honnête : test toujours sur une campagne non vue"
+    },
+    "naive": {
+      "method": "StratifiedKFold",
+      "k": 5,
+      "group": null,
+      "leakage_safe": false,
+      "note": "optimiste, fournie pour rendre visible l'écart = la fuite supprimée"
+    }
+  },
+  "min_campaigns_any_class": 2,
+  "caveat_bruteforce": "BruteForce ne compte que 2 campagnes : la validation groupée y revient à entraîner sur une campagne et tester sur l'autre. Chiffres indicatifs, non concluants.",
+  "multiclass_grouped_vs_naive": {
+    "Benign": {
+      "f1_grouped": 0.662886948633632,
+      "f1_naive": 0.9997148560022812,
+      "gap_naive_minus_grouped": 0.3368279073686492,
+      "n_campaigns": 4,
+      "absent_from_some_train_fold": 0,
+      "grouped_robustly_evaluable": true
+    },
+    "Reconnaissance": {
+      "f1_grouped": 0.0,
+      "f1_naive": 0.999727831908987,
+      "gap_naive_minus_grouped": 0.999727831908987,
+      "n_campaigns": 2,
+      "absent_from_some_train_fold": 1,
+      "grouped_robustly_evaluable": false
+    },
+    "Impact": {
+      "f1_grouped": 0.900562851782364,
+      "f1_naive": 1.0,
+      "gap_naive_minus_grouped": 0.09943714821763605,
+      "n_campaigns": 3,
+      "absent_from_some_train_fold": 0,
+      "grouped_robustly_evaluable": true
+    },
+    "InitialAccess_CredentialAccess": {
+      "f1_grouped": 1.0,
+      "f1_naive": 1.0,
+      "gap_naive_minus_grouped": 0.0,
+      "n_campaigns": 2,
+      "absent_from_some_train_fold": 0,
+      "grouped_robustly_evaluable": false
+    }
+  },
+  "min_campaigns_for_robust_grouped": 3,
+  "classes_not_robustly_evaluable_grouped": [
+    "Reconnaissance",
+    "InitialAccess_CredentialAccess"
+  ],
+  "metrics": {
+    "binary_grouped": {
+      "per_class": {
+        "Benign": {
+          "precision": 0.99342925116121,
+          "recall": 1.0,
+          "f1-score": 0.9967037963173448,
+          "support": 8769.0
+        },
+        "Attack": {
+          "precision": 1.0,
+          "recall": 0.9944444444444445,
+          "f1-score": 0.9972144846796658,
+          "support": 10440.0
+        }
+      },
+      "macro_avg": {
+        "precision": 0.996714625580605,
+        "recall": 0.9972222222222222,
+        "f1-score": 0.9969591404985053
+      },
+      "accuracy_not_to_be_cited_alone": 0.9969805820188453,
+      "classes_absent_from_some_train_fold": {},
+      "n_folds": 2
+    },
+    "binary_naive": {
+      "per_class": {
+        "Benign": {
+          "precision": 1.0,
+          "recall": 0.9998859619112783,
+          "f1-score": 0.9999429777042824,
+          "support": 8769.0
+        },
+        "Attack": {
+          "precision": 0.9999042237333589,
+          "recall": 1.0,
+          "f1-score": 0.9999521095732963,
+          "support": 10440.0
+        }
+      },
+      "macro_avg": {
+        "precision": 0.9999521118666794,
+        "recall": 0.9999429809556392,
+        "f1-score": 0.9999475436387893
+      },
+      "accuracy_not_to_be_cited_alone": 0.9999479410692904,
+      "classes_absent_from_some_train_fold": {},
+      "n_folds": 5
+    },
+    "multiclass_grouped": {
+      "per_class": {
+        "Benign": {
+          "precision": 0.49575983717774763,
+          "recall": 1.0,
+          "f1-score": 0.662886948633632,
+          "support": 8769.0
+        },
+        "Reconnaissance": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 9184.0
+        },
+        "Impact": {
+          "precision": 0.8191126279863481,
+          "recall": 1.0,
+          "f1-score": 0.900562851782364,
+          "support": 1200.0
+        },
+        "InitialAccess_CredentialAccess": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 56.0
+        }
+      },
+      "macro_avg": {
+        "precision": 0.578718116291024,
+        "recall": 0.75,
+        "f1-score": 0.640862450103999
+      },
+      "accuracy_not_to_be_cited_alone": 0.5218907803633713,
+      "classes_absent_from_some_train_fold": {
+        "Reconnaissance": 1
+      },
+      "n_folds": 2
+    },
+    "multiclass_naive": {
+      "per_class": {
+        "Benign": {
+          "precision": 0.9998859228838695,
+          "recall": 0.9995438476451135,
+          "f1-score": 0.9997148560022812,
+          "support": 8769.0
+        },
+        "Reconnaissance": {
+          "precision": 0.9995646021552194,
+          "recall": 0.9998911149825784,
+          "f1-score": 0.999727831908987,
+          "support": 9184.0
+        },
+        "Impact": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 1200.0
+        },
+        "InitialAccess_CredentialAccess": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 56.0
+        }
+      },
+      "macro_avg": {
+        "precision": 0.9998626312597723,
+        "recall": 0.999858740656923,
+        "f1-score": 0.999860671977817
+      },
+      "accuracy_not_to_be_cited_alone": 0.9997397053464522,
+      "classes_absent_from_some_train_fold": {},
+      "n_folds": 5
+    }
+  }
+}
