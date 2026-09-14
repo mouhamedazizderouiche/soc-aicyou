@@ -109,6 +109,132 @@ class AnalysisEngine:
         return result
 
 
+# =============================================================================
+# Second chemin d'analyse : FLUX LOCAUX (schéma NetFlow v1)
+# =============================================================================
+# Ajouté le 09/09/2026. Ce chemin est DISTINCT du chemin NSL-KDD ci-dessus,
+# qui n'est pas supprimé : l'un (NSL-KDD) est validé sur dataset académique
+# et démontré sur la page "Moteur d'analyse" ; l'autre (flux locaux) est
+# destiné au trafic réel, entraîné directement dessus (train_local_flow_model.py).
+# Les deux coexistent volontairement.
+
+import os as _os
+
+from feature_schema import LOCAL_FLOW_FEATURE_COLUMNS, validate_local_flow_schema
+
+# Bandes de risque : réutilisées telles quelles depuis risk_scorer, pour que
+# le vocabulaire (low/medium/high/critical) soit identique sur les deux chemins.
+from risk_scorer import RISK_BANDS
+
+# Les trois tactiques d'attaque que le modèle multi-classe local peut prédire.
+# Benign est exclu de ce sous-ensemble : pour un flux jugé suspect par le
+# binaire, on veut la tactique d'attaque la plus probable, pas "Benign".
+_LOCAL_ATTACK_TACTICS = ["Reconnaissance", "Impact", "InitialAccess_CredentialAccess"]
+
+_LOCAL_TACTIC_DESCRIPTIONS = {
+    "Reconnaissance": "Activité de sondage/scan en préparation d'une attaque.",
+    "Impact": "Tentative de perturbation de la disponibilité (déni de service).",
+    "InitialAccess_CredentialAccess": "Tentative d'accès ou de compromission d'identifiants (force brute).",
+}
+
+
+def _risk_band(score: float) -> str:
+    for low, high, label in RISK_BANDS:
+        if low <= score < high:
+            return label
+    return "unknown"
+
+
+class LocalFlowAnalysisEngine:
+    """
+    Moteur d'analyse pour le schéma des FLUX LOCAUX (NetFlow v1). Assemble,
+    comme AnalysisEngine mais sur ce schéma : score de risque (binaire) +
+    tactique MITRE (multi-classe) + contexte + recommandation playbook.
+
+    Choix explicite sur detected_by_anomaly (voir build_recommendation) :
+    ce chemin n'a PAS de détecteur d'anomalies (pas d'Isolation Forest).
+    detected_by_anomaly est donc TOUJOURS False, et l'avertissement
+    "détecté par anomalie seule" ne s'applique pas ici. Ce n'est pas un
+    oubli : un Isolation Forest sur les flux bénins locaux serait un modèle
+    supplémentaire à valider (il faudrait des attaques nouvelles tenues à
+    l'écart pour mesurer son apport), non fait à ce stade. La signature de
+    build_recommendation est agnostique de la source : elle fonctionne sans
+    modification, ce qui est vérifié par test (tests/test_analysis_engine_local.py).
+    """
+
+    def __init__(
+        self,
+        binary_model_path: str = "data/netflow/netflow_local_xgboost_binary.json",
+        multiclass_model_path: str = "data/netflow/netflow_local_xgboost_multiclass.json",
+        classes_path: str = "data/netflow/netflow_local_classes.pkl",
+        attack_threshold: float = 0.5,
+    ):
+        self.binary_model = xgb.XGBClassifier()
+        self.binary_model.load_model(binary_model_path)
+        self.multiclass_model = xgb.XGBClassifier()
+        self.multiclass_model.load_model(multiclass_model_path)
+        self.classes = list(joblib.load(classes_path))  # ex. [Benign, Reconnaissance, Impact, IA_CA]
+        self.attack_threshold = attack_threshold
+        # index des tactiques d'attaque dans l'espace de sortie multi-classe
+        self._attack_cols = [self.classes.index(t) for t in _LOCAL_ATTACK_TACTICS]
+        logger.info("Moteur flux locaux initialisé (binaire + multi-classe, seuil=%.2f).",
+                    attack_threshold)
+
+    @classmethod
+    def is_available(cls, base_dir: str = ".") -> bool:
+        """Vrai si les trois artefacts du modèle local existent."""
+        return all(_os.path.exists(_os.path.join(base_dir, p)) for p in (
+            "data/netflow/netflow_local_xgboost_binary.json",
+            "data/netflow/netflow_local_xgboost_multiclass.json",
+            "data/netflow/netflow_local_classes.pkl",
+        ))
+
+    def analyze(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+        X : DataFrame au schéma LOCAL_FLOW_FEATURE_COLUMNS (10 colonnes,
+        adresses IP exclues). Retourne, par flux : score de risque, bande,
+        décision d'attaque, tactique prédite + confiance + identifiant MITRE,
+        contexte et recommandation playbook.
+        """
+        validate_local_flow_schema(X, context="LocalFlowAnalysisEngine.analyze")
+
+        proba_attack = self.binary_model.predict_proba(X)[:, 1]
+        is_attack = (proba_attack >= self.attack_threshold).astype(int)
+
+        out = pd.DataFrame(index=X.index)
+        out["risk_score"] = proba_attack
+        out["risk_band"] = [_risk_band(s) for s in proba_attack]
+        out["is_attack"] = is_attack
+        out["predicted_tactic"] = None
+        out["tactic_confidence"] = float("nan")
+        out["mitre_id"] = None
+        out["context"] = None
+        out["recommendation"] = DEFAULT_RECOMMENDATION
+
+        suspicious = out.index[is_attack == 1]
+        if len(suspicious) > 0:
+            # tactique = argmax RESTREINT aux tactiques d'attaque (Benign exclu)
+            proba_mc = self.multiclass_model.predict_proba(X.loc[suspicious])
+            attack_proba = proba_mc[:, self._attack_cols]
+            best = attack_proba.argmax(axis=1)
+            confidence = attack_proba.max(axis=1)
+            tactics = [_LOCAL_ATTACK_TACTICS[i] for i in best]
+
+            out.loc[suspicious, "predicted_tactic"] = tactics
+            out.loc[suspicious, "tactic_confidence"] = confidence
+            out.loc[suspicious, "mitre_id"] = [TACTIC_MITRE_IDS.get(t, "N/A") for t in tactics]
+            out.loc[suspicious, "context"] = [
+                _LOCAL_TACTIC_DESCRIPTIONS.get(t, "Contexte non disponible.") for t in tactics
+            ]
+            out.loc[suspicious, "recommendation"] = [
+                build_recommendation(band, tactic, conf, detected_by_anomaly=False)
+                for band, tactic, conf in zip(
+                    out.loc[suspicious, "risk_band"], tactics, confidence
+                )
+            ]
+        return out
+
+
 if __name__ == "__main__":
     from preprocess import preprocess
 
