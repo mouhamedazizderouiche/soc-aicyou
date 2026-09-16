@@ -56,12 +56,14 @@ ATTACKER_IPS = ("192.168.1.225", "192.168.1.230", "192.168.1.159")
 # Les bornes sont des préfixes de timestamp ISO comparés
 # lexicographiquement, comme dans flow_feature_extractor.iter_flow_events.
 ATTACK_WINDOWS = [
+    ("2026-09-13T13:21", "2026-09-13T13:23", "192.168.1.225", "192.168.1.249", None, "Reconnaissance"),
     # --- Scan de ports nmap -> Reconnaissance -------------------------
     # 28/07 : deux rafales vers l'ancienne adresse .112, 97-98 ports
     # distincts par minute.
     ("2026-07-28T21:25", "2026-07-28T21:27", "192.168.1.225", "192.168.1.112", None, "Reconnaissance"),
     ("2026-07-28T22:03", "2026-07-28T22:06", "192.168.1.225", "192.168.1.112", None, "Reconnaissance"),
     # 31/08 : campagne principale, 1004 ports de destination distincts.
+    ("2026-09-13T13:21", "2026-09-13T13:23", "192.168.1.225", "192.168.1.249", None, "Reconnaissance"),
     ("2026-08-31T23:47", "2026-08-31T23:49", "192.168.1.225", "192.168.1.249", None, "Reconnaissance"),
 
     # --- Flood TCP sur le port 22 -> DoS ------------------------------
@@ -72,6 +74,8 @@ ATTACK_WINDOWS = [
     ("2026-08-31T23:45", "2026-08-31T23:46", "192.168.1.225", "192.168.1.249", 22, "DoS"),
 
     # --- Force brute SSH -> BruteForce --------------------------------
+    ("2026-09-13T13:35", "2026-09-13T13:50", "192.168.1.225", "192.168.1.249", 22, "BruteForce"),
+    ("2026-09-13T13:35", "2026-09-13T13:38", "192.168.1.225", "192.168.1.249", 22, "BruteForce"),
     # Bornes élargies d'une minute autour des échecs auth.log, pour
     # capturer le flux Suricata qui porte la tentative (un flux est
     # journalisé à sa fermeture ou à son timeout, donc après l'échec).

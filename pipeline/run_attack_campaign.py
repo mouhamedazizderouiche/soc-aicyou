@@ -115,7 +115,7 @@ def _iter_flows(since, until):
                 continue
             if e.get("event_type") != "flow":
                 continue
-            ts = e.get("timestamp", "")
+            ts = (e.get("flow", {}) or {}).get("start", "") or e.get("timestamp", "")
             if since and ts < since:
                 continue
             if until and ts > until:
