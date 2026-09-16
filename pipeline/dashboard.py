@@ -48,44 +48,101 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    /* ===== Base ===== */
     #MainMenu, footer, header {visibility: hidden;}
-    .main { background-color: #0b0e14; }
-    .block-container { padding-top: 1.2rem; }
+    .stApp { background: radial-gradient(1400px 700px at 15% -10%, #101826 0%, #0a0e15 60%); }
+    html, body, [class*="css"], .stMarkdown, p, span, div { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
+    .main .block-container { padding-top: 1.4rem; padding-bottom: 2rem; max-width: 100%; }
 
+    h1,h2,h3,h4 { color:#f1f5f9 !important; font-weight:700 !important; letter-spacing:-0.4px; }
+    .soc-subtitle { color:#64748b; font-size:14px; margin-top:-6px; margin-bottom:10px; }
+
+    /* ===== Header horizontal ===== */
+    .soc-header {
+        display:flex; align-items:center; justify-content:space-between;
+        background: linear-gradient(90deg, #121a26 0%, #0d1119 100%);
+        border:1px solid #1e2634; border-radius:16px;
+        padding:18px 26px; margin-bottom:22px;
+        box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+    }
+    .soc-header-title { font-size:22px; font-weight:800; color:#f1f5f9; }
+    .soc-header-sub   { font-size:12px; color:#64748b; margin-top:2px; }
+    .soc-status {
+        display:inline-flex; align-items:center; gap:8px;
+        background:#0f2a1a; border:1px solid #1e5f3a; color:#4ade80;
+        padding:7px 16px; border-radius:22px; font-size:12px; font-weight:600;
+    }
+    .soc-chip {
+        display:inline-flex; align-items:center; gap:8px;
+        border:1px solid #1e2634; color:#94a3b8;
+        padding:7px 16px; border-radius:22px; font-size:12px;
+    }
+
+    /* ===== Cartes metriques ===== */
     div[data-testid="stMetric"] {
-        background: linear-gradient(145deg, #161a23, #12151d);
-        border: 1px solid #232733; border-radius: 10px; padding: 14px 16px;
+        background: linear-gradient(145deg, #151b26, #0f141d);
+        border: 1px solid #1e2634; border-radius: 14px; padding: 16px 18px;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.30);
     }
-    div[data-testid="stMetricLabel"] { font-size: 13px; color: #8b93a7; }
-    div[data-testid="stMetricValue"] { font-size: 24px; font-weight: 700; }
+    div[data-testid="stMetricLabel"] { font-size: 12px; color:#64748b; }
+    div[data-testid="stMetricValue"] { font-size: 26px; font-weight:800; color:#f1f5f9; }
 
-    .badge {
-        display: inline-block; padding: 3px 10px; border-radius: 20px;
-        font-size: 11px; font-weight: 700; text-transform: uppercase;
-    }
+    /* ===== Badges ===== */
+    .badge { display:inline-block; padding:3px 12px; border-radius:20px;
+             font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
     .badge-critical { background:#3d1216; color:#ff5c5c; border:1px solid #ff5c5c66; }
     .badge-high     { background:#3d2612; color:#ff9d42; border:1px solid #ff9d4266; }
     .badge-medium   { background:#3d3512; color:#ffd166; border:1px solid #ffd16666; }
     .badge-low      { background:#0f3d24; color:#06d6a0; border:1px solid #06d6a066; }
 
-    .soc-subtitle { color:#8b93a7; font-size:15px; margin-top:-8px; }
-    section[data-testid="stSidebar"] { background-color: #0f1219; border-right:1px solid #1e222c; }
+    /* ===== SIDEBAR ===== */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0d1119 0%, #090c12 100%);
+        border-right:1px solid #1a2230; width: 260px !important;
+    }
+    section[data-testid="stSidebar"] .block-container { padding-top: 1.6rem; }
 
-    /* Cartes de filtre cliquables */
+    /* Nav radio -> items de menu avec fond, coins arrondis, etat actif */
+    section[data-testid="stSidebar"] div[role="radiogroup"] { gap:4px; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
+        display:flex; align-items:center; width:100%;
+        padding:11px 16px; margin:2px 0; border-radius:11px;
+        cursor:pointer; transition:all 0.15s ease;
+        border:1px solid transparent; color:#94a3b8; font-weight:500;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
+        background:#141c28; color:#e2e8f0;
+    }
+    /* Masquer le petit rond radio, garder juste le texte-item */
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-child { display:none; }
+    /* Item selectionne (Streamlit met aria-checked) */
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {
+        background: linear-gradient(90deg, #1d4ed8 0%, #1e40af 100%);
+        color:#ffffff; border-color:#2563eb;
+        box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+    }
+
+    /* ===== Boutons ===== */
     div[data-testid="stButton"] > button {
-        width: 100%; border-radius: 10px; padding: 18px 10px;
-        border: 1px solid #232733; background: #161a23; color: #e6e6e6;
-        font-weight: 600; transition: all 0.15s ease;
+        width:100%; border-radius:12px; padding:16px 12px;
+        border:1px solid #1e2634; background:linear-gradient(145deg,#151b26,#0f141d);
+        color:#e2e8f0; font-weight:600; transition:all 0.18s ease;
     }
     div[data-testid="stButton"] > button:hover {
-        border-color: #ff5c5c; transform: translateY(-2px);
+        border-color:#3b82f6; transform:translateY(-2px);
+        box-shadow:0 6px 20px rgba(59,130,246,0.15);
     }
 
-    @keyframes pulse { 0% {opacity:1;} 50% {opacity:0.4;} 100% {opacity:1;} }
-    .live-dot {
-        display:inline-block; width:8px; height:8px; border-radius:50%;
-        background:#ff5c5c; animation: pulse 1.4s infinite; margin-right:6px;
-    }
+    /* ===== Tableaux ===== */
+    div[data-testid="stDataFrame"] { border-radius:12px; overflow:hidden; border:1px solid #1e2634; }
+
+    /* ===== Dot pulsante ===== */
+    @keyframes pulse { 0%{opacity:1;} 50%{opacity:0.35;} 100%{opacity:1;} }
+    .live-dot { display:inline-block; width:8px; height:8px; border-radius:50%;
+        background:#4ade80; animation:pulse 1.4s infinite; margin-right:6px;
+        box-shadow:0 0 8px #4ade80; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -185,7 +242,7 @@ def generate_ai_summary(alerts_df: pd.DataFrame) -> dict:
         recommendation = (
             f"Investigation immédiate sous 15 min recommandée sur {top_ip}. "
             "Vérifier si le trafic est légitime (whois/reverse DNS) avant tout blocage. "
-            "Voir docs/playbook-reponse-incidents.md, section correspondant à la tactique dominante."
+            "Voir le playbook de réponse aux incidents, section correspondant à la tactique dominante."
         )
     elif scan_pattern and (critical_count > 0 or high_count > 0):
         level = "high"
@@ -248,49 +305,118 @@ report = load_validation_report()
 # PAGE 1 — Vue d'ensemble
 # ============================================================
 if page == "📊 Vue d'ensemble":
-    st.markdown('<span class="live-dot"></span> **Système actif**', unsafe_allow_html=True)
-    st.markdown("## Vue d'ensemble du système")
-    st.markdown('<p class="soc-subtitle">Performance consolidée du pipeline de détection</p>', unsafe_allow_html=True)
+    from datetime import timezone
+    _now = datetime.now(timezone.utc).strftime("%d/%m/%Y  %H:%M UTC")
+    st.markdown(f"""
+    <div class="soc-header">
+        <div>
+            <div class="soc-header-title">SOC AICYOU</div>
+            <div class="soc-header-sub">Moteur intelligent de détection d'intrusions</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span class="soc-status"><span class="live-dot"></span> Système actif</span>
+            <span class="soc-chip">🕐 {_now}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     st.write("")
     if report:
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Taux de détection", f"{report['detection_rate']:.1%}", help="Recall sur le jeu de test NSL-KDD")
-        c2.metric("Taux de faux positifs", f"{report['false_positive_rate']:.1%}")
-        c3.metric("Débit moteur ML", f"{report['ml_throughput_events_per_sec']:,.0f}", "évt/s")
+        # --- Rangee de 7 cartes metriques, style maquette ---
         conf = report.get('avg_tactic_confidence_critical')
-        c4.metric("Confiance tactique", f"{conf:.1%}" if conf else "N/A", help="Cas critiques uniquement")
+        cards = [
+            ("Taux de detection",         f"{report['detection_rate']:.1%}",                "#3b82f6"),
+            ("Taux de faux positifs",     f"{report['false_positive_rate']:.1%}",           "#ef4444"),
+            ("Debit moteur ML",           f"{report['ml_throughput_events_per_sec']:,.0f}", "#06b6d4"),
+            ("Confiance tactique",        f"{conf:.1%}" if conf else "N/A",                 "#8b5cf6"),
+            ("Latence pipeline",          f"{report.get('pipeline_e2e_latency_ms', 0):.0f} ms", "#f59e0b"),
+            ("Alertes critiques",         f"{report.get('critical_alerts_count', 0):,}",    "#ec4899"),
+            ("Coherence risque->tactique",f"{report.get('critical_with_tactic_pct', 0):.0%}", "#10b981"),
+        ]
+        cols = st.columns(len(cards))
+        for col, (label, value, color) in zip(cols, cards):
+            col.markdown(f"""
+            <div style="background:linear-gradient(145deg,#161a23,#12151d);
+                        border:1px solid #232733;border-top:2px solid {color};
+                        border-radius:12px;padding:16px 14px;height:110px;">
+                <div style="font-size:12px;color:#8b93a7;line-height:1.3;
+                            margin-bottom:8px;min-height:32px;">{label}</div>
+                <div style="font-size:26px;font-weight:800;color:#e6e6e6;">{value}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
         st.write("")
-        c5, c6, c7 = st.columns(3)
-        c5.metric("Latence pipeline (bout-en-bout)", f"{report.get('pipeline_e2e_latency_ms', 0):.0f} ms")
-        c6.metric("Alertes critiques analysées", f"{report.get('critical_alerts_count', 0):,}")
-        c7.metric("Cohérence risque → tactique", f"{report.get('critical_with_tactic_pct', 0):.0%}")
-
-        # Transparence : ces métriques sont un instantané figé (snapshot),
-        # pas des valeurs live -- elles ne changent qu'en relançant
-        # validation_report.py. Sans cette date, un lecteur pourrait
-        # raisonnablement croire qu'elles sont recalculées en continu.
         generated_at_raw = report.get("generated_at")
-        if generated_at_raw:
-            try:
-                generated_dt = datetime.fromisoformat(generated_at_raw)
-                generated_label = generated_dt.strftime("%d/%m/%Y à %H:%M UTC")
-            except (ValueError, TypeError):
-                generated_label = generated_at_raw
-        else:
-            generated_label = "date inconnue (rapport généré avant l'ajout de l'horodatage)"
-
+        try:
+            generated_label = datetime.fromisoformat(generated_at_raw).strftime("%d/%m/%Y a %H:%M UTC")
+        except (ValueError, TypeError):
+            generated_label = "date inconnue"
         st.caption(
-            f"📸 Instantané généré le **{generated_label}** — pas une mesure live. "
-            "Relancer `python validation_report.py` après toute mise à jour du modèle "
-            "pour rafraîchir ces chiffres."
+            f"Instantane du {generated_label} -- metriques du modele sur jeu de validation, "
+            "pas une mesure temps reel."
         )
-
-        pipeline_note = report.get("pipeline_latency_note")
-        if pipeline_note:
-            st.caption(f"⚠️ {pipeline_note}")
     else:
-        st.warning("Rapport de validation introuvable — lancer `python validation_report.py`.")
+        st.warning("Metriques de validation indisponibles.")
+
+
+    # ============================================================
+    # Rangee du milieu : activite dans le temps + repartition source
+    # ============================================================
+    st.write("")
+    try:
+        _alerts_mid, _total_mid = load_live_alerts(size=500)
+        col_g, col_d = st.columns([2, 1])
+
+        with col_g:
+            st.markdown("#### Activite des alertes")
+            _df = _alerts_mid.copy()
+            _df["ts"] = pd.to_datetime(_df["timestamp"], errors="coerce", utc=True)
+            _df = _df.dropna(subset=["ts"])
+            if not _df.empty:
+                serie = _df.set_index("ts").resample("30min").size().reset_index(name="alertes")
+                fig = px.area(serie, x="ts", y="alertes")
+                fig.update_traces(line_color="#3b82f6", fillcolor="rgba(59,130,246,0.18)")
+                fig.update_layout(
+                    height=300, margin=dict(l=10, r=10, t=10, b=10),
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font_color="#8b93a7", xaxis_title=None, yaxis_title=None,
+                    xaxis=dict(gridcolor="#1e222c"), yaxis=dict(gridcolor="#1e222c"),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Pas de donnees temporelles exploitables.")
+
+        with col_d:
+            st.markdown("#### Repartition par source")
+            if "source_type" in _alerts_mid.columns and not _alerts_mid.empty:
+                src = _alerts_mid["source_type"].fillna("Inconnu").value_counts().reset_index()
+                src.columns = ["source", "count"]
+                fig2 = go.Figure(data=[go.Pie(
+                    labels=src["source"], values=src["count"], hole=0.6,
+                    marker=dict(colors=["#3b82f6", "#06b6d4", "#8b5cf6", "#64748b"]),
+                )])
+                fig2.update_layout(
+                    height=300, margin=dict(l=10, r=10, t=10, b=10),
+                    paper_bgcolor="rgba(0,0,0,0)", font_color="#8b93a7",
+                    showlegend=True, legend=dict(orientation="v", x=1, y=0.5),
+                    annotations=[dict(text=f"{len(_alerts_mid)}<br>alertes",
+                                      x=0.5, y=0.5, font_size=16, showarrow=False,
+                                      font_color="#e6e6e6")],
+                )
+                st.plotly_chart(fig2, use_container_width=True)
+            else:
+                st.info("Source indisponible.")
+
+        # --- Top attaquants (vraies IP sources) ---
+        st.markdown("#### Top attaquants")
+        ip_col = "src_ip" if "src_ip" in _alerts_mid.columns else None
+        if ip_col:
+            top = _alerts_mid[ip_col].dropna().value_counts().head(5).reset_index()
+            top.columns = ["IP source", "Occurrences"]
+            st.dataframe(top, use_container_width=True, hide_index=True)
+        else:
+            st.info("IP sources indisponibles.")
+    except Exception as e:
+        st.info(f"Section activite indisponible ({e})")
 
     st.write("")
     st.markdown("#### 🤖 Résumé automatique")
@@ -320,6 +446,50 @@ if page == "📊 Vue d'ensemble":
     except Exception as e:
         st.info(f"Résumé indisponible pour le moment ({e})")
 
+    st.write("")
+    st.markdown("#### Répartition MITRE ATT&CK")
+    st.markdown('<p class="soc-subtitle">Tactiques réellement détectées dans le trafic récent</p>', unsafe_allow_html=True)
+    try:
+        _alerts_mitre, _ = load_live_alerts(size=500)
+        # mitre_tactics peut être une liste ou une chaîne selon la normalisation
+        from collections import Counter
+        tac_counter = Counter()
+        if "mitre_tactics" in _alerts_mitre.columns:
+            for val in _alerts_mitre["mitre_tactics"].dropna():
+                if isinstance(val, (list, tuple)):
+                    for t in val:
+                        if t:
+                            tac_counter[str(t)] += 1
+                elif isinstance(val, str) and val.strip():
+                    for t in val.split(","):
+                        t = t.strip()
+                        if t:
+                            tac_counter[t] += 1
+
+        if tac_counter:
+            total_tac = sum(tac_counter.values())
+            palette = ["#ef4444", "#f59e0b", "#8b5cf6", "#06b6d4", "#10b981", "#ec4899"]
+            rows_html = ""
+            for i, (tac, cnt) in enumerate(tac_counter.most_common()):
+                pct = cnt / total_tac * 100
+                color = palette[i % len(palette)]
+                rows_html += f'''
+                <div style="display:flex;align-items:center;margin-bottom:10px;">
+                    <div style="width:230px;color:#c9cfdb;font-size:13px;">{tac}</div>
+                    <div style="flex:1;background:#1e222c;border-radius:6px;height:14px;overflow:hidden;">
+                        <div style="width:{pct:.0f}%;background:{color};height:14px;"></div>
+                    </div>
+                    <div style="width:55px;text-align:right;color:#8b93a7;font-size:13px;">{pct:.0f}%</div>
+                </div>'''
+            st.markdown(f'''<div style="background:linear-gradient(145deg,#161a23,#12151d);
+                        border:1px solid #232733;border-radius:12px;padding:18px 20px;">{rows_html}</div>''',
+                        unsafe_allow_html=True)
+            st.caption(f"{len(tac_counter)} tactique(s) MITRE ATT&CK détectée(s) sur {total_tac} alerte(s) taguée(s).")
+        else:
+            st.info("Aucune tactique MITRE ATT&CK dans les alertes récentes.")
+    except Exception as e:
+        st.info(f"Répartition MITRE indisponible ({e})")
+
     st.divider()
     st.markdown("#### Architecture de détection en profondeur")
     col_a, col_b, col_c = st.columns(3)
@@ -342,9 +512,30 @@ elif page == "🔴 Alertes en direct":
     with st.spinner("Chargement des alertes..."):
         try:
             alerts_df, total_alerts = load_live_alerts()
-            alerts_df["risk_band"] = alerts_df["rule_level"].apply(level_to_band)
+            # --- Branchement du modele IA flux-locaux (repli level_to_band par ligne) ---
+            from live_flow_scoring import score_alerts
+            _scoring = score_alerts(alerts_df, base_dir=".")
+            alerts_df["risk_band"] = _scoring["risk_band"]
+            alerts_df["risk_score"] = _scoring["risk_score"]
+            alerts_df["predicted_tactic"] = _scoring["predicted_tactic"]
+            alerts_df["band_source"] = _scoring["band_source"]
+            _scoring_meta = _scoring["meta"]
             alerts_df["alert_id"] = alerts_df["raw"].apply(extract_alert_id)
             st.caption(f"{total_alerts:,} alertes indexées au total — {len(alerts_df)} plus récentes chargées")
+            _m = _scoring_meta
+            if _m["method"] == "model+fallback":
+                st.markdown(
+                    f'<div style="background:#0f1a2e;border:1px solid #1e3a5f;border-radius:10px;'
+                    f'padding:10px 16px;margin:8px 0;font-size:13px;color:#93c5fd;">'
+                    f'\U0001F9E0 Bandes de risque calculées par le <b>modèle IA flux-locaux</b> : '
+                    f'{_m["n_model"]} alerte(s) scorée(s) par le modèle, {_m["n_fallback"]} en repli sévérité.'
+                    f'</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    f'<div style="background:#2a1e0f;border:1px solid #5f4a1e;border-radius:10px;'
+                    f'padding:10px 16px;margin:8px 0;font-size:13px;color:#fbbf24;">'
+                    f'\u26A0\uFE0F Bandes de risque en repli sévérité (modèle indisponible : {_m["reason"]}).'
+                    f'</div>', unsafe_allow_html=True)
         except Exception as e:
             st.error(f"Connexion à l'Indexer impossible : {e}")
             alerts_df = pd.DataFrame()
@@ -581,7 +772,7 @@ elif page == "🗺️ Carte MITRE ATT&CK":
         st.caption(
             f"📸 Métriques générées le **{generated_label}** — "
             f"{coverage.get('total_types_mapped', '?')} types d'attaque NSL-KDD couverts. "
-            "Relancer `python tactic_classifier_smote.py` après toute mise à jour du modèle."
+            "Métriques issues de la dernière validation du modèle."
         )
     else:
         # Repli sur les valeurs figées si le rapport n'existe pas encore
@@ -592,7 +783,7 @@ elif page == "🗺️ Carte MITRE ATT&CK":
             "InitialAccess_CredentialAccess": {"id": "TA0001/TA0006", "desc": "Accès non autorisé / vol d'identifiants", "f1": 0.75},
             "PrivilegeEscalation": {"id": "TA0004", "desc": "Élévation de privilèges", "f1": 0.14},
         }
-        st.warning("Rapport de métriques introuvable — valeurs figées affichées. Lancer `python tactic_classifier_smote.py`.")
+        st.warning("Métriques du modèle indisponibles — valeurs de référence affichées.")
 
     cols = st.columns(4)
     for col, (tactic, info) in zip(cols, tactic_info.items()):
@@ -613,7 +804,7 @@ elif page == "🗺️ Carte MITRE ATT&CK":
     pe_note = f" (F1 = {pe_precision:.2f})" if pe_precision is not None else ""
     st.warning(f"⚠️ **PrivilegeEscalation** reste la catégorie la plus faible{pe_note} — "
                "52 exemples d'entraînement réels, précision faible même après SMOTE modéré — "
-               "traitée en priorité manuelle systématique quel que soit le score, voir `docs/playbook-reponse-incidents.md`.")
+               "traitée en priorité manuelle systématique quel que soit le score, voir le playbook de réponse aux incidents.")
 
     df_tactic = pd.DataFrame([{"Tactique": k, "F1-score": v["f1"]} for k, v in tactic_info.items()])
     fig = px.bar(df_tactic, x="F1-score", y="Tactique", orientation="h",
